@@ -38,6 +38,92 @@ from premier_league_team_strength_model import (
 
 
 # ==========================
+# פונקציות עזר ל-RTL
+# ==========================
+
+def rtl(text: str) -> None:
+    """
+    מציג טקסט בעברית עם כיווניות ימין-לשמאל באמצעות st.markdown ו-HTML מפורש.
+    """
+    st.markdown(
+        f'<div dir="rtl" style="text-align: right;">{text}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def rtl_sidebar(text: str) -> None:
+    """
+    מציג טקסט בעברית בסרגל הצד עם כיווניות ימין-לשמאל.
+    """
+    st.sidebar.markdown(
+        f'<div dir="rtl" style="text-align: right;">{text}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def compute_match_outcome_probs(
+    proba_home_strong: float,
+    proba_away_strong: float,
+    home_advantage: float = 0.05,
+):
+    """
+    פונקציה היוריסטית לחישוב הסתברויות תוצאה למשחק:
+    ניצחון בית (Home), תיקו (Draw), ניצחון חוץ (Away).
+
+    קלט:
+    - proba_home_strong: ההסתברות של המודל שהקבוצה הביתית "חזקה".
+    - proba_away_strong: ההסתברות של המודל שהקבוצה האורחת "חזקה".
+    - home_advantage: יתרון ביתיות (נוסף לכוח של הקבוצה הביתית).
+
+    לוגיקה:
+    1. מחשבים "חוזק אפקטיבי" לכל קבוצה:
+       strength_home = proba_home_strong + home_advantage
+       strength_away = proba_away_strong
+    2. קובעים הסתברות לתיקו כתלות בפער הכוחות:
+       - gap = abs(proba_home_strong - proba_away_strong)
+       - draw_base גבוה כשהפער קטן, נמוך כשהפער גדול.
+    3. את השארית (1 - draw_prob) מחלקים בין Home/Away
+       באופן יחסי לחוזקים האפקטיביים.
+
+    התוצאה:
+    שלישיית הסתברויות (home_win, draw, away_win) שסכומן ~= 1.
+    """
+
+    # חוזק בסיסי (עם בונוס ביתיות לקבוצה 1)
+    strength_home = np.clip(proba_home_strong + home_advantage, 0.0, 1.0)
+    strength_away = np.clip(proba_away_strong, 0.0, 1.0)
+
+    # אם מסיבה כלשהי שני החוזקים אפסיים, נחזיר 1/3-1/3-1/3
+    if strength_home == 0 and strength_away == 0:
+        return 1.0 / 3, 1.0 / 3, 1.0 / 3
+
+    # פער החוזק המקורי (בלי ביתיות) – משפיע על הסיכוי לתיקו
+    gap = abs(proba_home_strong - proba_away_strong)
+
+    # הגדרה היוריסטית: כש-gap קטן → Draw גבוה; כש-gap גדול → Draw נמוך
+    max_draw = 0.45  # תיקו כמעט מחצית מהמקרים כשקבוצות כמעט שוות
+    min_draw = 0.10  # מינימום תיקו כשיש פער גדול מאוד
+    draw_prob = max_draw - (max_draw - min_draw) * gap
+    draw_prob = float(np.clip(draw_prob, min_draw, max_draw))
+
+    # את השארית מחלקים לפי יחסי הכוחות
+    remaining = max(0.0, 1.0 - draw_prob)
+    total_strength = strength_home + strength_away
+
+    home_win_prob = remaining * (strength_home / total_strength)
+    away_win_prob = remaining * (strength_away / total_strength)
+
+    # נוודא שסכום ההסתברויות קרוב ל-1 (תיקון קטן אם צריך)
+    total = home_win_prob + draw_prob + away_win_prob
+    if total > 0:
+        home_win_prob /= total
+        draw_prob /= total
+        away_win_prob /= total
+
+    return float(home_win_prob), float(draw_prob), float(away_win_prob)
+
+
+# ==========================
 # פונקציות עזר עם cache
 # ==========================
 
@@ -118,15 +204,15 @@ st.set_page_config(
     layout="centered",
 )
 
-st.title("⚽ חיזוי חוזק קבוצות בפרמייר ליג")
-st.write(
-    "אפליקציה קטנה שמבוססת על נתוני השחקנים וסטטיסטיקות היסטוריות.\n"
-    "המודל מנבא לכל קבוצה הסתברות להיות מוגדרת כ*קבוצה חזקה*, "
+rtl("<h1>⚽ חיזוי חוזק קבוצות בפרמייר ליג</h1>")
+rtl(
+    "אפליקציה קטנה שמבוססת על נתוני השחקנים וסטטיסטיקות היסטוריות.<br>"
+    "המודל מנבא לכל קבוצה הסתברות להיות מוגדרת כקבוצה חזקה, "
     "ועל בסיס זה מעריך מי הפייבוריט התיאורטי במשחק ביניהן."
 )
 
 # בחירת נתיב לקובץ ה-CSV (עם ברירת מחדל מהסקריפט המקורי)
-st.sidebar.header("הגדרות נתונים")
+rtl_sidebar("<h3>הגדרות נתונים</h3>")
 default_path_str = str(DEFAULT_CSV_PATH)
 csv_path_input = st.sidebar.text_input(
     "נתיב לקובץ השחקנים (CSV)",
@@ -140,26 +226,26 @@ try:
         csv_path_input
     )
 except FileNotFoundError as e:
-    st.error(
-        "לא הצלחתי למצוא את קובץ הנתונים.\n\n"
-        f"{e}\n\n"
+    rtl(
+        "לא הצלחתי למצוא את קובץ הנתונים.<br>"
+        f"{e}<br>"
         "עדכן את הנתיב בצד שמאל לקובץ CSV הנכון (כפי שהורדת מ-Kaggle)."
     )
     st.stop()
 except Exception as e:
-    st.error(f"קרתה שגיאה בזמן טעינת הנתונים או אימון המודל: {e}")
+    rtl(f"קרתה שגיאה בזמן טעינת הנתונים או אימון המודל: {e}")
     st.stop()
 
 # הצגת מידע כללי על המודל
-st.sidebar.subheader("מידע על המודל")
-st.sidebar.write(f"דיוק על סט הבדיקה (test accuracy): **{test_accuracy:.2%}**")
-st.sidebar.write(f"מספר קבוצות בדאטה: **{len(clubs)}**")
+rtl_sidebar("<h4>מידע על המודל</h4>")
+rtl_sidebar(f"דיוק על סט הבדיקה (test accuracy): <b>{test_accuracy:.2%}</b>")
+rtl_sidebar(f"מספר קבוצות בדאטה: <b>{len(clubs)}</b>")
 
 st.markdown("---")
-st.subheader("בחר שתי קבוצות להשוואה")
+rtl("<h3>בחר שתי קבוצות להשוואה</h3>")
 
 if len(clubs) < 2:
-    st.warning("נדרשות לפחות שתי קבוצות בדאטה כדי לבצע השוואה.")
+    rtl("נדרשות לפחות שתי קבוצות בדאטה כדי לבצע השוואה.")
     st.stop()
 
 col1, col2 = st.columns(2)
@@ -172,13 +258,8 @@ with col2:
     default_index = 1 if len(clubs) > 1 else 0
     team_b = st.selectbox("קבוצה 2", clubs, index=default_index)
 
-st.markdown(
-    "_הערה_: המודל לא רואה מי בית ומי חוץ, "
-    "רק חוזק כללי של כל קבוצה על בסיס היסטוריית המשחקים."
-)
-
 if team_a == team_b:
-    st.warning("בחר שתי קבוצות שונות כדי לבצע השוואה.")
+    rtl("בחר שתי קבוצות שונות כדי לבצע השוואה.")
     st.stop()
 
 if st.button("חשב הסתברות לכל קבוצה"):
@@ -197,18 +278,40 @@ if st.button("חשב הסתברות לכל קבוצה"):
     proba_a = float(model.predict_proba(X_team_a)[0][1])
     proba_b = float(model.predict_proba(X_team_b)[0][1])
 
-    st.markdown("### תוצאות החיזוי")
+    rtl("<h3>תוצאות החיזוי</h3>")
+    rtl(f"הסתברות להיות 'קבוצה חזקה' – {team_a}: {proba_a:.2%}")
+    rtl(f"הסתברות להיות 'קבוצה חזקה' – {team_b}: {proba_b:.2%}")
 
-    col_res1, col_res2 = st.columns(2)
-    with col_res1:
+    # חישוב הסתברויות היוריסטיות לתוצאת משחק (Home / Draw / Away)
+    home_win_prob, draw_prob, away_win_prob = compute_match_outcome_probs(
+        proba_home_strong=proba_a,
+        proba_away_strong=proba_b,
+        home_advantage=0.05,
+    )
+
+    rtl(
+        f"הנחה לחישוב: {team_a} היא הקבוצה הביתית (Home), "
+        f"{team_b} היא הקבוצה האורחת (Away)."
+    )
+
+    col_home, col_draw, col_away = st.columns(3)
+
+    with col_home:
         st.metric(
-            label=f"הסתברות להיות 'קבוצה חזקה' – {team_a}",
-            value=f"{proba_a:.2%}",
+            label="ניצחון קבוצה ביתית (Home)",
+            value=f"{home_win_prob * 100:.1f}%",
         )
-    with col_res2:
+
+    with col_draw:
         st.metric(
-            label=f"הסתברות להיות 'קבוצה חזקה' – {team_b}",
-            value=f"{proba_b:.2%}",
+            label="תיקו (Draw)",
+            value=f"{draw_prob * 100:.1f}%",
+        )
+
+    with col_away:
+        st.metric(
+            label="ניצחון קבוצה אורחת (Away)",
+            value=f"{away_win_prob * 100:.1f}%",
         )
 
     st.markdown("---")
@@ -216,21 +319,20 @@ if st.button("חשב הסתברות לכל קבוצה"):
     # קביעה מי "פייבוריט" לפי הסתברות גבוהה יותר
     eps = 1e-3  # טולרנס קטן בשביל הבדלים זניחים
     if abs(proba_a - proba_b) < eps:
-        st.info(
+        rtl(
             "לפי המודל, שתי הקבוצות כמעט שוות בחוזק שלהן – "
             "קשה להגיד מי פייבוריט מובהק."
         )
     elif proba_a > proba_b:
-        st.success(
-            f"לפי המודל, **{team_a}** היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה."
+        rtl(
+            f"לפי המודל, {team_a} היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה."
         )
     else:
-        st.success(
-            f"לפי המודל, **{team_b}** היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה."
+        rtl(
+            f"לפי המודל, {team_b} היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה."
         )
 
-    st.markdown(
+    rtl(
         "זו כמובן הערכה גסה בלבד, המבוססת על סטטיסטיקות היסטוריות של השחקנים בלבד "
         "ולא על פקטורים כמו פציעות, בית/חוץ, כושר נוכחי ועוד."
     )
-
