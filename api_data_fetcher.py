@@ -447,6 +447,39 @@ def fetch_remaining_fixtures(config: Optional[APIFootballConfig] = None) -> List
     return fixtures
 
 
+def fetch_played_matches_current_season(config: Optional[APIFootballConfig] = None) -> Dict[frozenset, str]:
+    """
+    מביא את כל המשחקים שהסתיימו העונה בפרמייר ליג ומחזיר מילון
+    שבו המפתח הוא Set קפוא של שתי הקבוצות, והערך הוא זהות המנצחת או DRAW.
+    """
+    raw = _api_get("/competitions/PL/matches", params=None, config=config)
+    matches = raw.get("matches", [])
+    
+    played_h2h = {}
+    for match in matches:
+        if match.get("status") != "FINISHED":
+            continue
+            
+        home_team = match.get("homeTeam", {}).get("name")
+        away_team = match.get("awayTeam", {}).get("name")
+        score_home = match.get("score", {}).get("fullTime", {}).get("home")
+        score_away = match.get("score", {}).get("fullTime", {}).get("away")
+        
+        if home_team and away_team and score_home is not None and score_away is not None:
+            home_norm = normalize_team_name(home_team)
+            away_norm = normalize_team_name(away_team)
+            match_key = frozenset([home_norm, away_norm])
+            
+            if score_home > score_away:
+                played_h2h[match_key] = home_norm
+            elif score_away > score_home:
+                played_h2h[match_key] = away_norm
+            else:
+                played_h2h[match_key] = "DRAW"
+                
+    return played_h2h
+
+
 if __name__ == "__main__":
     """
     דוגמה להרצה עצמאית מהטרמינל:
