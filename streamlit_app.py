@@ -718,29 +718,15 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         home_base = ppg_home / (ppg_home + ppg_away)
                         away_base = ppg_away / (ppg_home + ppg_away)
                         
-                        # ראש בראש עכשווי (20%)
-                        match_key = frozenset([home_norm, away_norm])
-                        h2h_winner = played_h2h.get(match_key, "DRAW")
-                        home_h2h, away_h2h = 0.10, 0.10
-                        if h2h_winner == home_norm:
-                            home_h2h = 0.20
-                            away_h2h = 0.0
-                        elif h2h_winner == away_norm:
-                            home_h2h = 0.0
-                            away_h2h = 0.20
-                            
-                        # מודל היסטורי (10% בלבד)
-                        home_model = hw_prob_raw * 0.10
-                        away_model = aw_prob_raw * 0.10
+                        # שקלול מאוזן (50% מודל, 50% כושר נוכחי)
+                        ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
+                        ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
+                        home_form_share = ppg_home / (ppg_home + ppg_away)
+                        away_form_share = ppg_away / (ppg_home + ppg_away)
                         
-                        # שקלול הסתברויות
-                        final_home_prob = (0.70 * home_base) + home_h2h + home_model
-                        final_away_prob = (0.70 * away_base) + away_h2h + away_model
-                        final_draw_prob = 0.24  # הסתברות תיקו דיפולטיבית
-                        
-                        # רצפת הסתברויות (10% מינימום)
-                        final_home_prob = max(0.10, final_home_prob)
-                        final_away_prob = max(0.10, final_away_prob)
+                        final_home_prob = (0.5 * hw_prob_raw) + (0.5 * home_form_share)
+                        final_away_prob = (0.5 * aw_prob_raw) + (0.5 * away_form_share)
+                        final_draw_prob = d_prob_raw  # התיקו ללא שינוי
                         
                         # נרמול ל-1.0
                         total_prob = final_home_prob + final_draw_prob + final_away_prob
@@ -748,18 +734,12 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         d_final = final_draw_prob / total_prob
                         aw_final = final_away_prob / total_prob
                         
-                        # בחירת תוצאה (Monte Carlo)
-                        probs = [hw_final, d_final, aw_final]
-                        outcomes = ['home', 'draw', 'away']
-                        outcome = np.random.choice(outcomes, p=probs)
+                        # חלוקת נקודות לפי תוחלת (Expected Value)
+                        home_expected_points = (hw_final * 3) + (d_final * 1)
+                        away_expected_points = (aw_final * 3) + (d_final * 1)
                         
-                        if outcome == 'home':
-                            points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
-                        elif outcome == 'away':
-                            points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
-                        else:
-                            points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
-                            points_sim[away_norm] = points_sim.get(away_norm, 0) + 1
+                        points_sim[home_norm] = points_sim.get(home_norm, 0) + home_expected_points
+                        points_sim[away_norm] = points_sim.get(away_norm, 0) + away_expected_points
                             
                         simulated_games[home_norm] = simulated_games.get(home_norm, 0) + 1
                         simulated_games[away_norm] = simulated_games.get(away_norm, 0) + 1
@@ -788,22 +768,15 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             team_base = ppg_team / (ppg_team + ppg_virtual)
                             virtual_base = ppg_virtual / (ppg_team + ppg_virtual)
                             
-                            # ראש בראש עכשווי (20%) - אין היסטוריה מול קבוצה וירטואלית, חלוקה שווה
-                            team_h2h = 0.10
-                            virtual_h2h = 0.10
+                            # שקלול מאוזן (50% מודל, 50% כושר נוכחי) לווירטואלית
+                            ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
+                            ppg_virtual = 1.0
+                            team_form_share = ppg_team / (ppg_team + ppg_virtual)
+                            virtual_form_share = ppg_virtual / (ppg_team + ppg_virtual)
                             
-                            # מודל היסטורי (10%)
-                            team_model = hw_prob_raw * 0.10
-                            virtual_model = aw_prob_raw * 0.10
-                            
-                            # שקלול הסתברויות
-                            final_team_prob = (0.70 * team_base) + team_h2h + team_model
-                            final_virtual_prob = (0.70 * virtual_base) + virtual_h2h + virtual_model
-                            final_draw_prob = 0.24  # הסתברות תיקו דיפולטיבית
-                            
-                            # רצפת הסתברויות (10% מינימום)
-                            final_team_prob = max(0.10, final_team_prob)
-                            final_virtual_prob = max(0.10, final_virtual_prob)
+                            final_team_prob = (0.5 * hw_prob_raw) + (0.5 * team_form_share)
+                            final_virtual_prob = (0.5 * aw_prob_raw) + (0.5 * virtual_form_share)
+                            final_draw_prob = d_prob_raw
                             
                             # נרמול ל-1.0
                             total_prob = final_team_prob + final_draw_prob + final_virtual_prob
@@ -811,17 +784,9 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             d_final = final_draw_prob / total_prob
                             aw_final = final_virtual_prob / total_prob
                             
-                            # בחירת תוצאה (Monte Carlo)
-                            probs = [hw_final, d_final, aw_final]
-                            outcomes = ['home', 'draw', 'away']
-                            outcome = np.random.choice(outcomes, p=probs)
-                            
-                            if outcome == 'home':
-                                points_sim[norm] += 3
-                            elif outcome == 'away':
-                                pass # הקבוצה הווירטואלית מנצחת, הקבוצה הנוכחית מקבלת 0
-                            else:
-                                points_sim[norm] += 1
+                            # חלוקת נקודות לפי תוחלת (Expected Value)
+                            team_expected_points = (hw_final * 3) + (d_final * 1)
+                            points_sim[norm] += team_expected_points
                             
                             simulated_games[norm] += 1
 
@@ -831,7 +796,7 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     norm = row['team_name_norm']
                     final_rows.append({
                         "קבוצה": row['team_name'],
-                        "נקודות סופיות": points_sim.get(norm, row['points'])
+                        "נקודות סופיות": round(points_sim.get(norm, row['points']))
                     })
                 
                 final_df = pd.DataFrame(final_rows)
