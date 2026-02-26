@@ -666,21 +666,23 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     for c in clubs:
                         if normalize_team_name(c) == norm:
                             return c
-                    m = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.5)
+                    m = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.4)
                     if m:
                         best = m[0]
                         for c in clubs:
                             if normalize_team_name(c) == best:
                                 return c
+                    print(f"⚠️ אזהרה: הסימולטור לא מצא התאמה לקבוצה מול המודל (CSV): '{norm}'")
                     return None
                     
                 def get_standings_team(norm):
                     keys = list(points_sim.keys())
                     if norm in keys:
                         return norm
-                    m = difflib.get_close_matches(norm, keys, n=1, cutoff=0.5)
+                    m = difflib.get_close_matches(norm, keys, n=1, cutoff=0.4)
                     if m:
                         return m[0]
+                    print(f"⚠️ אזהרה: הסימולטור לא מצא התאמה לקבוצה בטבלה החיה (Standings): '{norm}'")
                     return norm
 
                 for f in fixtures:
@@ -697,9 +699,9 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_away = float(model.predict_proba(x_a)[0][1])
                         
                         # סימולציה דטרמיניסטית
-                        if p_home > p_away + 0.02:
+                        if p_home > p_away + 0.035:
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
-                        elif p_away > p_home + 0.02:
+                        elif p_away > p_home + 0.035:
                             points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
                         else:
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
@@ -723,9 +725,9 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_team = float(model.predict_proba(x_team)[0][1])
                         
                         for _ in range(missing):
-                            if p_team > avg_p + 0.02:
+                            if p_team > avg_p + 0.035:
                                 points_sim[norm] += 3
-                            elif avg_p > p_team + 0.02:
+                            elif avg_p > p_team + 0.035:
                                 pass # קבוצה וירטואלית מנצחת ממוצעת, הקבוצה הנוכחית מקבלת 0
                             else:
                                 points_sim[norm] += 1
