@@ -652,9 +652,10 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
         rtl("לא ניתן לדמות, נתוני הטבלה אינם זמינים.")
     else:
         with st.spinner("מושך משחקים עתידיים ומחשב..."):
-            from api_data_fetcher import fetch_remaining_fixtures
+            from api_data_fetcher import fetch_remaining_fixtures, fetch_played_matches_current_season
             try:
                 fixtures = fetch_remaining_fixtures()
+                played_h2h = fetch_played_matches_current_season()
                 
                 # מעתיק את הנקודות הנוכחיות ומנהל מעקב אחרי כמות משחקים
                 points_sim = {row['team_name_norm']: row['points'] for _, row in live_standings_df.iterrows()}
@@ -711,37 +712,46 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         # חישוב הסתברויות גולמיות (מודל היסטורי)
                         hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
                         
-                        # מכפיל כושר עדין (Gentle Form Multiplier)
-                        ppg_home = ppg_dict.get(home_norm, 1.0)
-                        ppg_away = ppg_dict.get(away_norm, 1.0)
+                        # בסיס (70% כושר נוכחי)
+                        ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
+                        ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
+                        home_base = ppg_home / (ppg_home + ppg_away)
+                        away_base = ppg_away / (ppg_home + ppg_away)
                         
-                        home_mult = max(0.8, min(1.2, ppg_home / 1.5))
-                        away_mult = max(0.8, min(1.2, ppg_away / 1.5))
+                        # ראש בראש עכשווי (20%)
+                        match_key = frozenset([home_norm, away_norm])
+                        h2h_winner = played_h2h.get(match_key, "DRAW")
+                        home_h2h, away_h2h = 0.10, 0.10
+                        if h2h_winner == home_norm:
+                            home_h2h = 0.20
+                            away_h2h = 0.0
+                        elif h2h_winner == away_norm:
+                            home_h2h = 0.0
+                            away_h2h = 0.20
+                            
+                        # מודל היסטורי (10% בלבד)
+                        home_model = hw_prob_raw * 0.10
+                        away_model = aw_prob_raw * 0.10
                         
-                        new_home_prob = hw_prob_raw * home_mult
-                        new_away_prob = aw_prob_raw * away_mult
-                        new_draw_prob = d_prob_raw  # התיקו ללא שינוי
+                        # שקלול הסתברויות
+                        final_home_prob = (0.70 * home_base) + home_h2h + home_model
+                        final_away_prob = (0.70 * away_base) + away_h2h + away_model
+                        final_draw_prob = 0.24  # הסתברות תיקו דיפולטיבית
                         
-                        # חידוד הסתברויות (Temperature Sharpening)
-                        sq_home = new_home_prob ** 2
-                        sq_draw = new_draw_prob ** 2
-                        sq_away = new_away_prob ** 2
+                        # רצפת הסתברויות (10% מינימום)
+                        final_home_prob = max(0.10, final_home_prob)
+                        final_away_prob = max(0.10, final_away_prob)
                         
-                        # נרמול
-                        total_sq = sq_home + sq_draw + sq_away
-                        hw_final = sq_home / total_sq
-                        d_final = sq_draw / total_sq
-                        aw_final = sq_away / total_sq
+                        # נרמול ל-1.0
+                        total_prob = final_home_prob + final_draw_prob + final_away_prob
+                        hw_final = final_home_prob / total_prob
+                        d_final = final_draw_prob / total_prob
+                        aw_final = final_away_prob / total_prob
                         
+                        # בחירת תוצאה (Monte Carlo)
                         probs = [hw_final, d_final, aw_final]
                         outcomes = ['home', 'draw', 'away']
-                        max_prob_val = max(probs)
-                        
-                        # חזרה למודל היברידי קשוח (Hard Threshold)
-                        if max_prob_val >= 0.60:
-                            outcome = outcomes[probs.index(max_prob_val)]
-                        else:
-                            outcome = np.random.choice(outcomes, p=probs)
+                        outcome = np.random.choice(outcomes, p=probs)
                         
                         if outcome == 'home':
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
@@ -772,37 +782,39 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             # חישוב הסתברויות מול קבוצה וירטואלית ממוצעת (PPG ממוצע של 1.0)
                             hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
                             
-                            # מכפיל כושר עדין (Gentle Form Multiplier) מול קבוצה וירטואלית
-                            ppg_team = ppg_dict.get(norm, 1.0)
+                            # בסיס (70% כושר נוכחי) לווירטואלית
+                            ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
                             ppg_virtual = 1.0
+                            team_base = ppg_team / (ppg_team + ppg_virtual)
+                            virtual_base = ppg_virtual / (ppg_team + ppg_virtual)
                             
-                            team_mult = max(0.8, min(1.2, ppg_team / 1.5))
-                            virtual_mult = max(0.8, min(1.2, ppg_virtual / 1.5))
+                            # ראש בראש עכשווי (20%) - אין היסטוריה מול קבוצה וירטואלית, חלוקה שווה
+                            team_h2h = 0.10
+                            virtual_h2h = 0.10
                             
-                            new_team_prob = hw_prob_raw * team_mult
-                            new_virtual_prob = aw_prob_raw * virtual_mult
-                            new_draw_prob = d_prob_raw
+                            # מודל היסטורי (10%)
+                            team_model = hw_prob_raw * 0.10
+                            virtual_model = aw_prob_raw * 0.10
                             
-                            # חידוד הסתברויות (Temperature Sharpening)
-                            sq_team = new_team_prob ** 2
-                            sq_draw = new_draw_prob ** 2
-                            sq_virtual = new_virtual_prob ** 2
+                            # שקלול הסתברויות
+                            final_team_prob = (0.70 * team_base) + team_h2h + team_model
+                            final_virtual_prob = (0.70 * virtual_base) + virtual_h2h + virtual_model
+                            final_draw_prob = 0.24  # הסתברות תיקו דיפולטיבית
                             
-                            # נרמול
-                            total_sq = sq_team + sq_draw + sq_virtual
-                            hw_final = sq_team / total_sq
-                            d_final = sq_draw / total_sq
-                            aw_final = sq_virtual / total_sq
+                            # רצפת הסתברויות (10% מינימום)
+                            final_team_prob = max(0.10, final_team_prob)
+                            final_virtual_prob = max(0.10, final_virtual_prob)
                             
+                            # נרמול ל-1.0
+                            total_prob = final_team_prob + final_draw_prob + final_virtual_prob
+                            hw_final = final_team_prob / total_prob
+                            d_final = final_draw_prob / total_prob
+                            aw_final = final_virtual_prob / total_prob
+                            
+                            # בחירת תוצאה (Monte Carlo)
                             probs = [hw_final, d_final, aw_final]
                             outcomes = ['home', 'draw', 'away']
-                            max_prob_val = max(probs)
-                            
-                            # חזרה למודל היברידי קשוח
-                            if max_prob_val >= 0.60:
-                                outcome = outcomes[probs.index(max_prob_val)]
-                            else:
-                                outcome = np.random.choice(outcomes, p=probs)
+                            outcome = np.random.choice(outcomes, p=probs)
                             
                             if outcome == 'home':
                                 points_sim[norm] += 3
