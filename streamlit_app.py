@@ -656,8 +656,10 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
             try:
                 fixtures = fetch_remaining_fixtures()
                 
-                # מעתיק את הנקודות הנוכחיות
+                # מעתיק את הנקודות הנוכחיות ומנהל מעקב אחרי כמות משחקים
                 points_sim = {row['team_name_norm']: row['points'] for _, row in live_standings_df.iterrows()}
+                simulated_games = {row['team_name_norm']: 0 for _, row in live_standings_df.iterrows()}
+                played_games = {row['team_name_norm']: row.get('played', 0) for _, row in live_standings_df.iterrows()}
                 
                 # עזר למציאת קבוצה ב-X_all
                 def get_csv_team(norm):
@@ -686,13 +688,40 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_away = float(model.predict_proba(x_a)[0][1])
                         
                         # סימולציה דטרמיניסטית
-                        if p_home > p_away + 0.05:
+                        if p_home > p_away + 0.02:
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
-                        elif p_away > p_home + 0.05:
+                        elif p_away > p_home + 0.02:
                             points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
                         else:
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
                             points_sim[away_norm] = points_sim.get(away_norm, 0) + 1
+                            
+                        simulated_games[home_norm] = simulated_games.get(home_norm, 0) + 1
+                        simulated_games[away_norm] = simulated_games.get(away_norm, 0) + 1
+                        
+                # בדיקה והשלמה ל-38 משחקים (נגד יריבה ממוצעת וירטואלית)
+                average_team_features = X_all.mean(axis=0).to_frame().T
+                avg_p = float(model.predict_proba(average_team_features)[0][1])
+                
+                for norm, played in played_games.items():
+                    total_simulated = simulated_games.get(norm, 0)
+                    total_games = played + total_simulated
+                    
+                    csv_team = get_csv_team(norm)
+                    if total_games < 38 and csv_team and csv_team in X_all.index:
+                        missing = 38 - total_games
+                        x_team = X_all.loc[[csv_team]]
+                        p_team = float(model.predict_proba(x_team)[0][1])
+                        
+                        for _ in range(missing):
+                            if p_team > avg_p + 0.02:
+                                points_sim[norm] += 3
+                            elif avg_p > p_team + 0.02:
+                                pass # קבוצה וירטואלית מנצחת ממוצעת, הקבוצה הנוכחית מקבלת 0
+                            else:
+                                points_sim[norm] += 1
+                            
+                            simulated_games[norm] += 1
 
                 # בניית הטבלה הסופית
                 final_rows = []
@@ -700,6 +729,7 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     norm = row['team_name_norm']
                     final_rows.append({
                         "קבוצה": row['team_name'],
+                        "משחקים שסומלצו": simulated_games.get(norm, 0),
                         "נקודות סופיות": points_sim.get(norm, row['points'])
                     })
                 

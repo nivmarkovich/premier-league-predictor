@@ -387,14 +387,17 @@ def fetch_premier_league_standings_df(
 
 def fetch_remaining_fixtures(config: Optional[APIFootballConfig] = None) -> List[Dict[str, str]]:
     """
-    מביא את כל המשחקים שעוד לא שוחקו (status=SCHEDULED) בפרמייר ליג.
+    מביא את כל המשחקים שעוד לא שוחקו בפרמייר ליג.
     מחזיר רשימה של מילונים עם שמות הקבוצות מנורמלים.
     """
-    raw = _api_get("/competitions/PL/matches", params={"status": "SCHEDULED"}, config=config)
+    raw = _api_get("/competitions/PL/matches", params=None, config=config)
     matches = raw.get("matches", [])
     
     fixtures = []
     for match in matches:
+        if match.get("status") == "FINISHED":
+            continue
+            
         home_team = match.get("homeTeam", {}).get("name")
         away_team = match.get("awayTeam", {}).get("name")
         if home_team and away_team:
