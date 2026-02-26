@@ -1,114 +1,35 @@
-## Premier League Team Strength Predictor
+# ⚽ Premier League Match Predictor (v2.0)
 
-A small end-to-end ML project that predicts the **relative strength of Premier League teams** based on **player-level statistics**, with an interactive **Streamlit** web app for exploring matchups between any two clubs.
+A dynamic, end-to-end Machine Learning web application that predicts Premier League team strengths, simulates matchups, and forecasts the season champion using live data.
 
-### Overview
+**🔗 [Live Demo: Play with the App here!](https://premier-league-predictor-gq6jzykutzbajpzy7afvwh.streamlit.app/)**
 
-This project takes historical Premier League player statistics from Kaggle and:
+## 🚀 What's New in v2.0?
+The project has evolved from a static model running on local CSV files to a live web application:
+* **Live API Integration:** Fetches real-time standings and team data via `football-data.org`.
+* **Web Scraping:** Built a custom scraper using `pandas.read_html` and `requests` (with User-Agent spoofing to bypass 403 errors) to extract current "Form" (Last 5 matches) data. Cleaned dirty HTML strings using Regex.
+* **Improved Model Accuracy:** Optimized the Random Forest classifier. Adjusted the Train/Test split ratios and utilized `GridSearchCV` for hyperparameter tuning, successfully increasing the model's test accuracy from 80% to 87.5%.
+* **Stochastic Monte Carlo Simulator:** Added a "Predict Champion" feature. Instead of deterministic outputs, the simulator uses the model's `predict_proba` as weighted probabilities to simulate matchups between top-tier teams, introducing realistic variance.
+* **Advanced Data Viz:** Integrated `Plotly` for interactive Head-to-Head (H2H) statistical comparisons based on live data.
+* **Cloud Deployment:** Hosted seamlessly on Streamlit Community Cloud.
 
-- **Aggregates player stats into team-level features** (per club).
-- **Trains a logistic regression model** to classify whether a team is “strong” or “not strong” based on its historical performance.
-- Exposes a **Streamlit UI** where you can choose two clubs from dropdowns, and the model will estimate:
-  - The probability that each team is a “strong team”.
-  - Which team is the theoretical favorite (who is more likely to win).
+## 🛠️ Tech Stack
+* **Language:** Python 3
+* **Machine Learning:** Scikit-Learn (Random Forest, GridSearchCV)
+* **Data Engineering:** Pandas, NumPy
+* **Data Collection:** REST APIs, Web Scraping (`BeautifulSoup`, `lxml`)
+* **Frontend & Visualization:** Streamlit, Plotly
+* **Deployment:** Streamlit Community Cloud, GitHub
 
-The goal is to demonstrate a clean, production-style workflow: data preprocessing, feature engineering, model training with basic overfitting control, and a simple web interface.
+## 📂 Project Structure
+* `streamlit_app.py`: The main frontend application and UI logic.
+* `premier_league_team_strength_model.py`: The core ML pipeline (data cleaning, training, and evaluation).
+* `api_data_fetcher.py`: Handles API requests and the Web Scraping logic.
+* `data/`: Contains the historical `premier_league_players.csv` dataset used to train the base model.
+* `requirements.txt`: Dependencies for cloud deployment.
 
----
-
-### Problem Statement
-
-Raw football data is often at the **player level**, while we usually care about **team strength** and **match outcomes**.
-
-This project answers:
-
-> “Given player stats for all teams in the league, can we build a simple model that estimates how strong each team is, and then compare two teams to see who is favored?”
-
-Instead of directly predicting a single match result, we build a **team strength score** (probability of being a “strong” team). This score can then be used to compare any two teams.
-
----
-
-### Approach & Logic
-
-#### From player-level stats to team-level features
-
-1. **Load player statistics** from a Kaggle CSV (one row per player, with various performance metrics).
-2. **Clean the data**:
-   - Drop rows with missing `Nationality`, `Age`, or `Jersey Number` (clearly incomplete records).
-   - Convert percentage columns (e.g., `Shooting accuracy %`) from strings like `"45%"` to numeric `float` values.
-3. **Normalize to per-game metrics**:
-   - Remove players with `Appearances == 0` to avoid division by zero.
-   - For most numeric counting stats (goals, shots, tackles, etc.), divide by `Appearances` to obtain **per-game** rates.
-   - This makes players comparable even if they played different numbers of games.
-4. **Filter for stability**:
-   - Keep only players with at least **38 appearances** (roughly a full season).
-   - This reduces noise from players with very few minutes.
-5. **Aggregate to team level (per club)**:
-   - Select only numeric columns and keep `Club`.
-   - For each `Club`:
-     - Take the **mean of all per-game stats** across its players → team-level feature vector.
-   - Compute a **team win rate**:
-     - `win_rate = (sum of Wins for all players in club) / (sum of Appearances for all players in club)`.
-   - Use `win_rate` as the **target** for defining “strong” teams.
-
-#### Target definition
-
-- Compute the **median** of `win_rate` across all clubs.
-- Label each club:
-  - `1` = “strong team” if `win_rate >= median`.
-  - `0` = “not strong team” otherwise.
-
-We then train a binary classifier to predict this label from the aggregated team-level features.
-
----
-
-### Handling Overfitting
-
-The model uses several simple but effective techniques to reduce overfitting:
-
-- **Feature normalization per game**:
-  - Dividing counting stats by appearances (per-game rates) avoids inflated values for players who simply played more time.
-- **Filtering for players with ≥ 38 appearances**:
-  - Reduces noise and outliers from players with too few games, giving more stable statistics.
-- **Aggregation to team-level features**:
-  - Instead of learning on very noisy individual player records, the model sees one “summary vector” per club, which is richer and smoother.
-- **Train/Test split**:
-  - The data is split into training and test sets using `train_test_split` with `stratify=y`.
-  - This ensures evaluation on unseen teams and helps detect overfitting.
-- **Logistic Regression with L2 regularization**:
-  - The classifier is a `LogisticRegression` model wrapped in a `Pipeline`:
-    - `StandardScaler` → `LogisticRegression(penalty="l2", C=1.0)`.
-  - **L2 regularization** penalizes large weights, encouraging simpler models that generalize better.
-
----
-
-### Tech Stack
-
-- **Language**: Python
-- **Data processing**: Pandas, NumPy
-- **Machine Learning**: Scikit-Learn
-- **Web app / UI**: Streamlit
-- **Visualization / Metrics**: Scikit-Learn (accuracy, classification report)
-
----
-
-### Project Structure
-
-- `premier_league_team_strength_model.py`  
-  - Core data loading, preprocessing, feature engineering, and model training/evaluation logic.
-- `streamlit_app.py`  
-  - Streamlit user interface:
-    - Loads and preprocesses data.
-    - Trains (and caches) the model.
-    - Provides dropdowns to select two clubs and displays predicted probabilities + favorite.
-- `data/premier_league_players.csv` (not included)  
-  - Expected location for the Kaggle CSV with player statistics.
-
----
-
-### Getting Started
-
-#### 1. Clone the repository
-
-git clone https://github.com/<your-username>/premier-league-team-strength-predictor.git
-cd premier-league-team-strength-predictor
+## 💻 Run it Locally
+1. Clone this repository.
+2. Install dependencies: `pip install -r requirements.txt`
+3. Create a `.env` file in the root directory and add your API key: `FOOTBALL_DATA_ORG_KEY=your_api_key_here`
+4. Run the app: `python -m streamlit run streamlit_app.py`
