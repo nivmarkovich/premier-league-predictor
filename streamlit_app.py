@@ -718,15 +718,18 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         home_base = ppg_home / (ppg_home + ppg_away)
                         away_base = ppg_away / (ppg_home + ppg_away)
                         
-                        # שקלול מאוזן (50% מודל, 50% כושר נוכחי)
+                        # כוח כושר באקספוננציאל (Power Law)
                         ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
                         ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
-                        home_form_share = ppg_home / (ppg_home + ppg_away)
-                        away_form_share = ppg_away / (ppg_home + ppg_away)
+                        home_power = ppg_home ** 2.5
+                        away_power = ppg_away ** 2.5
+                        home_form_share = home_power / (home_power + away_power)
+                        away_form_share = away_power / (home_power + away_power)
                         
-                        final_home_prob = (0.5 * hw_prob_raw) + (0.5 * home_form_share)
-                        final_away_prob = (0.5 * aw_prob_raw) + (0.5 * away_form_share)
-                        final_draw_prob = d_prob_raw  # התיקו ללא שינוי
+                        # שקלול מתוקן (35% מודל, 65% כושר נוכחי)
+                        final_home_prob = (0.35 * hw_prob_raw) + (0.65 * home_form_share)
+                        final_away_prob = (0.35 * aw_prob_raw) + (0.65 * away_form_share)
+                        final_draw_prob = d_prob_raw * 0.85
                         
                         # נרמול ל-1.0
                         total_prob = final_home_prob + final_draw_prob + final_away_prob
@@ -768,15 +771,18 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             team_base = ppg_team / (ppg_team + ppg_virtual)
                             virtual_base = ppg_virtual / (ppg_team + ppg_virtual)
                             
-                            # שקלול מאוזן (50% מודל, 50% כושר נוכחי) לווירטואלית
+                            # כוח כושר באקספוננציאל (Power Law) לווירטואלית
                             ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
                             ppg_virtual = 1.0
-                            team_form_share = ppg_team / (ppg_team + ppg_virtual)
-                            virtual_form_share = ppg_virtual / (ppg_team + ppg_virtual)
+                            team_power = ppg_team ** 2.5
+                            virtual_power = ppg_virtual ** 2.5
+                            team_form_share = team_power / (team_power + virtual_power)
+                            virtual_form_share = virtual_power / (team_power + virtual_power)
                             
-                            final_team_prob = (0.5 * hw_prob_raw) + (0.5 * team_form_share)
-                            final_virtual_prob = (0.5 * aw_prob_raw) + (0.5 * virtual_form_share)
-                            final_draw_prob = d_prob_raw
+                            # שקלול מתוקן (35% מודל, 65% כושר נוכחי)
+                            final_team_prob = (0.35 * hw_prob_raw) + (0.65 * team_form_share)
+                            final_virtual_prob = (0.35 * aw_prob_raw) + (0.65 * virtual_form_share)
+                            final_draw_prob = d_prob_raw * 0.85
                             
                             # נרמול ל-1.0
                             total_prob = final_team_prob + final_draw_prob + final_virtual_prob
