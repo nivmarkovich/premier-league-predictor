@@ -686,24 +686,53 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     print(f"⚠️ אזהרה: הסימולטור לא מצא התאמה לקבוצה מול המודל (CSV): '{norm}'")
                     return None
                     
-                def get_standings_team(norm):
+                MANUAL_MAPPING = {
+                    'Brentford': 'Brentford FC',
+                    'Sunderland': 'Sunderland AFC',
+                    'Nott\'m Forest': 'Nottingham Forest FC',
+                    'Spurs': 'Tottenham Hotspur FC',
+                    'Man United': 'Manchester United FC'
+                }
+                
+                def get_standings_team(raw_name):
+                    norm = normalize_team_name(raw_name)
+                    # ניסיון מיפוי ידני תחילה
+                    if raw_name in MANUAL_MAPPING:
+                        norm = MANUAL_MAPPING[raw_name]
+                    elif norm in MANUAL_MAPPING:
+                        norm = MANUAL_MAPPING[norm]
+                        
                     keys = list(points_sim.keys())
                     if norm in keys:
                         return norm
                     m = difflib.get_close_matches(norm, keys, n=1, cutoff=0.4)
                     if m:
                         return m[0]
-                    print(f"⚠️ אזהרה: הסימולטור לא מצא התאמה לקבוצה בטבלה החיה (Standings): '{norm}'")
+                    
+                    # התראת שגיאה למשתמש ולא אזהרה שקטה
+                    st.error(f"Missing team in standings: {raw_name} -> {norm}")
                     return norm
 
                 for f in fixtures:
                     home_norm = get_standings_team(f['home_team_norm'])
                     away_norm = get_standings_team(f['away_team_norm'])
                     
+                    # כוח כושר באקספוננציאל (Power Law)
+                    ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
+                    ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
+                    home_power = ppg_home ** 2.5
+                    away_power = ppg_away ** 2.5
+                    home_form_share = home_power / (home_power + away_power)
+                    away_form_share = away_power / (home_power + away_power)
+                    
                     csv_home = get_csv_team(home_norm)
                     csv_away = get_csv_team(away_norm)
                     
-                    if csv_home and csv_away and csv_home in X_all.index and csv_away in X_all.index:
+                    # מנגנון הצלה למודל (Try-Except Fallback)
+                    try:
+                        if not (csv_home and csv_away and csv_home in X_all.index and csv_away in X_all.index):
+                            raise ValueError(f"Team {home_norm} or {away_norm} not in Historical Model (Out of Vocabulary)")
+                            
                         x_h = X_all.loc[[csv_home]]
                         x_a = X_all.loc[[csv_away]]
                         p_home = float(model.predict_proba(x_h)[0][1])
@@ -711,41 +740,32 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         
                         # חישוב הסתברויות גולמיות (מודל היסטורי)
                         hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
-                        
-                        # בסיס (70% כושר נוכחי)
-                        ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
-                        ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
-                        home_base = ppg_home / (ppg_home + ppg_away)
-                        away_base = ppg_away / (ppg_home + ppg_away)
-                        
-                        # כוח כושר באקספוננציאל (Power Law)
-                        ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
-                        ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
-                        home_power = ppg_home ** 2.5
-                        away_power = ppg_away ** 2.5
-                        home_form_share = home_power / (home_power + away_power)
-                        away_form_share = away_power / (home_power + away_power)
-                        
-                        # שקלול מתוקן (35% מודל, 65% כושר נוכחי)
-                        final_home_prob = (0.35 * hw_prob_raw) + (0.65 * home_form_share)
-                        final_away_prob = (0.35 * aw_prob_raw) + (0.65 * away_form_share)
-                        final_draw_prob = d_prob_raw * 0.85
-                        
-                        # נרמול ל-1.0
-                        total_prob = final_home_prob + final_draw_prob + final_away_prob
-                        hw_final = final_home_prob / total_prob
-                        d_final = final_draw_prob / total_prob
-                        aw_final = final_away_prob / total_prob
-                        
-                        # חלוקת נקודות לפי תוחלת (Expected Value)
-                        home_expected_points = (hw_final * 3) + (d_final * 1)
-                        away_expected_points = (aw_final * 3) + (d_final * 1)
-                        
-                        points_sim[home_norm] = points_sim.get(home_norm, 0) + home_expected_points
-                        points_sim[away_norm] = points_sim.get(away_norm, 0) + away_expected_points
+                    except Exception as e:
+                        # Fallback מלא לכושר נוכחי בלבד ללא הפרעה למשוואה
+                        hw_prob_raw = home_form_share
+                        aw_prob_raw = away_form_share
+                        d_prob_raw = 0.24 / 0.85 # מתקזז ככה ל-0.24 אחרי ההכפלה מטה
+                    
+                    # שקלול מתוקן (35% מודל, 65% כושר נוכחי)
+                    final_home_prob = (0.35 * hw_prob_raw) + (0.65 * home_form_share)
+                    final_away_prob = (0.35 * aw_prob_raw) + (0.65 * away_form_share)
+                    final_draw_prob = d_prob_raw * 0.85
+                    
+                    # נרמול ל-1.0
+                    total_prob = final_home_prob + final_draw_prob + final_away_prob
+                    hw_final = final_home_prob / total_prob
+                    d_final = final_draw_prob / total_prob
+                    aw_final = final_away_prob / total_prob
+                    
+                    # חלוקת נקודות לפי תוחלת (Expected Value)
+                    home_expected_points = (hw_final * 3) + (d_final * 1)
+                    away_expected_points = (aw_final * 3) + (d_final * 1)
+                    
+                    points_sim[home_norm] = points_sim.get(home_norm, 0) + home_expected_points
+                    points_sim[away_norm] = points_sim.get(away_norm, 0) + away_expected_points
                             
-                        simulated_games[home_norm] = simulated_games.get(home_norm, 0) + 1
-                        simulated_games[away_norm] = simulated_games.get(away_norm, 0) + 1
+                    simulated_games[home_norm] = simulated_games.get(home_norm, 0) + 1
+                    simulated_games[away_norm] = simulated_games.get(away_norm, 0) + 1
                         
                 # בדיקה והשלמה ל-38 משחקים (נגד יריבה ממוצעת וירטואלית)
                 average_team_features = X_all.mean(axis=0).to_frame().T
@@ -755,30 +775,32 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     total_simulated = simulated_games.get(norm, 0)
                     total_games = played + total_simulated
                     
-                    csv_team = get_csv_team(norm)
-                    if total_games < 38 and csv_team and csv_team in X_all.index:
+                    if total_games < 38:
                         missing = 38 - total_games
-                        x_team = X_all.loc[[csv_team]]
-                        p_team = float(model.predict_proba(x_team)[0][1])
+                        csv_team = get_csv_team(norm)
+                        
+                        # כוח כושר באקספוננציאל (Power Law) לווירטואלית
+                        ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
+                        ppg_virtual = 1.0
+                        team_power = ppg_team ** 2.5
+                        virtual_power = ppg_virtual ** 2.5
+                        team_form_share = team_power / (team_power + virtual_power)
+                        virtual_form_share = virtual_power / (team_power + virtual_power)
+                        
+                        try:
+                            if not (csv_team and csv_team in X_all.index):
+                                raise ValueError("Out of vocabulary team for missing fixtures loop")
+                                
+                            x_team = X_all.loc[[csv_team]]
+                            p_team = float(model.predict_proba(x_team)[0][1])
+                            hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
+                        except Exception:
+                            # מנגנון הצלה לווירטואלית מבוסס פורמה נוכחית עקב Out of Vocabulary
+                            hw_prob_raw = team_form_share
+                            aw_prob_raw = virtual_form_share
+                            d_prob_raw = 0.24 / 0.85
                         
                         for _ in range(missing):
-                            # חישוב הסתברויות מול קבוצה וירטואלית ממוצעת (PPG ממוצע של 1.0)
-                            hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
-                            
-                            # בסיס (70% כושר נוכחי) לווירטואלית
-                            ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
-                            ppg_virtual = 1.0
-                            team_base = ppg_team / (ppg_team + ppg_virtual)
-                            virtual_base = ppg_virtual / (ppg_team + ppg_virtual)
-                            
-                            # כוח כושר באקספוננציאל (Power Law) לווירטואלית
-                            ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
-                            ppg_virtual = 1.0
-                            team_power = ppg_team ** 2.5
-                            virtual_power = ppg_virtual ** 2.5
-                            team_form_share = team_power / (team_power + virtual_power)
-                            virtual_form_share = virtual_power / (team_power + virtual_power)
-                            
                             # שקלול מתוקן (35% מודל, 65% כושר נוכחי)
                             final_team_prob = (0.35 * hw_prob_raw) + (0.65 * team_form_share)
                             final_virtual_prob = (0.35 * aw_prob_raw) + (0.65 * virtual_form_share)
