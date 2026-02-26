@@ -43,18 +43,90 @@ from premier_league_team_strength_model import (
 
 
 # ==========================
-# פונקציות עזר ל-RTL
+# פונקציות עזר ל-RTL ו-UI
 # ==========================
+
+def inject_global_css() -> None:
+    """
+    מזריק לחומרת האפליקציה CSS גלובלי.
+    כולל הגדרות לכיווניות RTL מימין לשמאל, עיצוב 'כרטיסיות' (Cards),
+    ופורמט ממורכז (Centered text).
+    """
+    st.markdown(
+        """
+        <style>
+        /* כיווניות גלובלית לימין */
+        .block-container {
+            direction: rtl;
+            text-align: right;
+        }
+        
+        /* מחלקת כרטיסייה (Card) שנעטוף בה אזורים מרכזיים */
+        .st-card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border: 1px solid #f0f0f0;
+        }
+
+        /* מחלקות ייעודיות לטקסט ממורכז */
+        .text-center {
+            text-align: center !important;
+        }
+        
+        .score-board-team {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333333;
+        }
+        
+        .score-board-prob {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #1e88e5; /* ניתן לשנות את הצבע דינמית אח"כ */
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 def rtl(text: str) -> None:
     """
     מציג טקסט בעברית עם כיווניות ימין-לשמאל באמצעות st.markdown ו-HTML מפורש.
+    (שמור לתאימות לאחור, למרות שיש הגדרה גלובלית עכשיו)
     """
     st.markdown(
         f'<div dir="rtl" style="text-align: right;">{text}</div>',
         unsafe_allow_html=True,
     )
 
+def render_colored_form_badge(form_str: str) -> str:
+    """
+    מקבל מחרוזת כמו 'WWDLW' ומחזיר HTML מעוצב עם חתיכות בצבעים נפרדים:
+    W = ירוק, D = אפור/כתום, L = אדום.
+    """
+    if not form_str:
+        return "N/A"
+        
+    html_parts = []
+    for char in form_str.upper():
+        if char == 'W':
+            bg_color = "#4caf50" # ירוק
+        elif char == 'D':
+            bg_color = "#9e9e9e" # אפור
+        elif char == 'L':
+            bg_color = "#f44336" # אדום
+        else:
+            continue
+            
+        html_parts.append(
+            f"<span style='display:inline-block; background-color:{bg_color}; "
+            f"color:white; padding:4px 8px; margin: 0 2px; border-radius:6px; "
+            f"font-weight:bold; font-size: 0.85em; width: 15px; text-align: center;'>{char}</span>"
+        )
+    return "".join(html_parts)
 
 def rtl_sidebar(text: str) -> None:
     """
@@ -285,6 +357,9 @@ st.set_page_config(
     layout="centered",
 )
 
+# הפעלת עיצוב ה-CSS שיצרנו
+inject_global_css()
+
 rtl("<h1>⚽ חיזוי חוזק קבוצות בפרמייר ליג</h1>")
 rtl(
     "אפליקציה קטנה שמבוססת על נתוני השחקנים וסטטיסטיקות היסטוריות.<br>"
@@ -454,10 +529,23 @@ if st.button("חשב הסתברות לכל קבוצה"):
     proba_a = float(model.predict_proba(X_team_a)[0][1])
     proba_b = float(model.predict_proba(X_team_b)[0][1])
 
-    rtl("<h3>תוצאות החיזוי</h3>")
-    rtl(f"הסתברות להיות 'קבוצה חזקה' – {team_a}: {proba_a:.2%}")
-    rtl(f"הסתברות להיות 'קבוצה חזקה' – {team_b}: {proba_b:.2%}")
+    st.markdown('<div class="st-card">', unsafe_allow_html=True)
+    rtl("<h3 class='text-center'>תוצאות התחזית (Scoreboard)</h3>")
+    
+    # אזור שני העמודות בלוח התוצאות
+    score_col1, score_col2 = st.columns(2)
+    
+    with score_col1:
+        st.markdown(f"<div class='text-center score-board-team'>{team_a}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='text-center score-board-prob' style='color: #1e88e5;'>{proba_a:.1%}</div>", unsafe_allow_html=True)
+        
+    with score_col2:
+        st.markdown(f"<div class='text-center score-board-team'>{team_b}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='text-center score-board-prob' style='color: #43a047;'>{proba_b:.1%}</div>", unsafe_allow_html=True)
 
+    # סיכום מילולי לתחזית
+    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+    
     # חישוב הסתברויות היוריסטיות לתוצאת משחק (Home / Draw / Away)
     home_win_prob, draw_prob, away_win_prob = compute_match_outcome_probs(
         proba_home_strong=proba_a,
@@ -490,10 +578,35 @@ if st.button("חשב הסתברות לכל קבוצה"):
             value=f"{away_win_prob * 100:.1f}%",
         )
 
-    st.markdown("---")
+    # קביעה מי "פייבוריט" לפי הסתברות גבוהה יותר
+    eps = 1e-3  # טולרנס קטן בשביל הבדלים זניחים
+    if abs(proba_a - proba_b) < eps:
+        rtl(
+            "<p class='text-center'>לפי המודל, שתי הקבוצות כמעט שוות בחוזק שלהן – "
+            "קשה להגיד מי פייבוריט מובהק.</p>"
+        )
+    elif proba_a > proba_b:
+        rtl(
+            f"<p class='text-center'>לפי המודל, <b>{team_a}</b> היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה.</p>"
+        )
+    else:
+        rtl(
+            f"<p class='text-center'>לפי המודל, <b>{team_b}</b> היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה.</p>"
+        )
 
+    rtl(
+        "<p style='font-size: 0.85em; color: #666;' class='text-center'>זו כמובן הערכה גסה בלבד, המבוססת על סטטיסטיקות היסטוריות של השחקנים בלבד "
+        "ולא על פקטורים כמו פציעות, בית/חוץ, כושר נוכחי ועוד.</p>"
+    )
+    
+    # סגירת ה-Card הראשון
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ==========================
     # הקשר בזמן אמת מה-API
-    rtl("<h3>הקשר בזמן אמת (Real-time Context)</h3>")
+    # ==========================
+    st.markdown('<div class="st-card">', unsafe_allow_html=True)
+    rtl("<h3 class='text-center'>הקשר בזמן אמת (Real-time Context)</h3>")
     if live_standings_df is not None:
         row_home = find_team_in_standings(live_standings_df, team_a)
         row_away = find_team_in_standings(live_standings_df, team_b)
@@ -506,20 +619,19 @@ if st.button("חשב הסתברות לכל קבוצה"):
                 raw_form_home = row_home.get("form")
 
                 if raw_form_home:
-                    # הפורמט ב-football-data.org הוא לרוב "W,W,D,L,W" – מנקים פסיקים ורווחים
                     form_home_clean = "".join([char for char in str(raw_form_home).upper() if char in ['W', 'D', 'L']])[-5:]
+                    colored_badges = render_colored_form_badge(form_home_clean)
+                    
                     rtl(
-                        f"{team_a}: מקום {rank_home}, רצף משחקים אחרונים:&nbsp;"
-                        f"<span style='display:inline-block;"
-                        f"background-color:#1e88e5;color:white;padding:4px 10px;"
-                        f"border-radius:12px;font-weight:bold;direction:ltr;'>"
-                        f"{form_home_clean}"
-                        f"</span>"
+                        f"<strong>{team_a}</strong><br>"
+                        f"מיקום בטבלה: <strong>{rank_home}</strong><br>"
+                        f"רצף אחרון: <div dir='ltr' style='display:inline-block;'>{colored_badges}</div>"
                     )
                 else:
-                    # אין נתון form זמין מה-API – מציגים N/A בלי קוביית Form
                     rtl(
-                        f"{team_a}: מקום {rank_home}, רצף משחקים אחרונים: N/A"
+                        f"<strong>{team_a}</strong><br>"
+                        f"מיקום בטבלה: {rank_home}<br>"
+                        f"רצף אחרון: N/A"
                     )
             else:
                 rtl(
@@ -533,17 +645,18 @@ if st.button("חשב הסתברות לכל קבוצה"):
 
                 if raw_form_away:
                     form_away_clean = "".join([char for char in str(raw_form_away).upper() if char in ['W', 'D', 'L']])[-5:]
+                    colored_badges = render_colored_form_badge(form_away_clean)
+                    
                     rtl(
-                        f"{team_b}: מקום {rank_away}, רצף משחקים אחרונים:&nbsp;"
-                        f"<span style='display:inline-block;"
-                        f"background-color:#43a047;color:white;padding:4px 10px;"
-                        f"border-radius:12px;font-weight:bold;direction:ltr;'>"
-                        f"{form_away_clean}"
-                        f"</span>"
+                        f"<strong>{team_b}</strong><br>"
+                        f"מיקום בטבלה: <strong>{rank_away}</strong><br>"
+                        f"רצף אחרון: <div dir='ltr' style='display:inline-block;'>{colored_badges}</div>"
                     )
                 else:
                     rtl(
-                        f"{team_b}: מקום {rank_away}, רצף משחקים אחרונים: N/A"
+                        f"<strong>{team_b}</strong><br>"
+                        f"מיקום בטבלה: {rank_away}<br>"
+                        f"רצף אחרון: N/A"
                     )
             else:
                 rtl(
@@ -551,34 +664,14 @@ if st.button("חשב הסתברות לכל קבוצה"):
                 )
     else:
         rtl("לא ניתן להציג הקשר בזמן אמת כיוון שטבלת ה-API לא נטענה בהצלחה.")
-
-    # קביעה מי "פייבוריט" לפי הסתברות גבוהה יותר
-    eps = 1e-3  # טולרנס קטן בשביל הבדלים זניחים
-    if abs(proba_a - proba_b) < eps:
-        rtl(
-            "לפי המודל, שתי הקבוצות כמעט שוות בחוזק שלהן – "
-            "קשה להגיד מי פייבוריט מובהק."
-        )
-    elif proba_a > proba_b:
-        rtl(
-            f"לפי המודל, {team_a} היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה."
-        )
-    else:
-        rtl(
-            f"לפי המודל, {team_b} היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה."
-        )
-
-    rtl(
-        "זו כמובן הערכה גסה בלבד, המבוססת על סטטיסטיקות היסטוריות של השחקנים בלבד "
-        "ולא על פקטורים כמו פציעות, בית/חוץ, כושר נוכחי ועוד."
-    )
-
-    st.markdown("---")
+        
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    # ------------------
+    # ==========================
     # גרף השוואה חי (Head-to-Head)
-    # ------------------
-    rtl("<h3>השוואת סטטיסטיקות העונה (Live Data)</h3>")
+    # ==========================
+    st.markdown('<div class="st-card">', unsafe_allow_html=True)
+    rtl("<h3 class='text-center'>השוואת סטטיסטיקות העונה (Live Data)</h3>")
     
     if live_standings_df is not None:
         row_a = find_team_in_standings(live_standings_df, team_a)
@@ -627,3 +720,5 @@ if st.button("חשב הסתברות לכל קבוצה"):
             rtl("לא נמצאו מספיק נתונים חיים (Live Data) להצגת הגרף עבור שתי הקבוצות.")
     else:
         rtl("הנתונים החיים לא נטענו, לא ניתן להציג את הגרף.")
+        
+    st.markdown('</div>', unsafe_allow_html=True)
