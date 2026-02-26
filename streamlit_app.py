@@ -711,42 +711,36 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         # חישוב הסתברויות גולמיות (מודל היסטורי)
                         hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
                         
-                        # שקלול כושר נוכחי (PPG)
-                        ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.5)
-                        ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.5)
-                        ppg_avg = (ppg_home + ppg_away) / 2.0
+                        # שקלול עדין (75% מודל מתמטי, 25% נתח כושר נוכחי)
+                        ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
+                        ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
+                        total_ppg = ppg_home + ppg_away
                         
-                        hw_weighted = hw_prob_raw * ppg_home
-                        d_weighted = d_prob_raw * ppg_avg
-                        aw_weighted = aw_prob_raw * ppg_away
+                        home_form_share = ppg_home / total_ppg
+                        away_form_share = ppg_away / total_ppg
+                        
+                        new_home_prob = (0.75 * hw_prob_raw) + (0.25 * home_form_share)
+                        new_away_prob = (0.75 * aw_prob_raw) + (0.25 * away_form_share)
+                        new_draw_prob = d_prob_raw * 0.9  # קנס קטן לתיקו כדי לעודד הכרעות
                         
                         # נרמול בחזרה ל-1.0
-                        total_weight = hw_weighted + d_weighted + aw_weighted
-                        hw_final = hw_weighted / total_weight
-                        d_final = d_weighted / total_weight
-                        aw_final = aw_weighted / total_weight
+                        total_weight = new_home_prob + new_draw_prob + new_away_prob
+                        hw_final = new_home_prob / total_weight
+                        d_final = new_draw_prob / total_weight
+                        aw_final = new_away_prob / total_weight
                         
+                        # קביעת מנצחת בעזרת Monte Carlo
                         probs = [hw_final, d_final, aw_final]
                         outcomes = ['home', 'draw', 'away']
+                        outcome = np.random.choice(outcomes, p=probs)
                         
-                        # קביעת המנצחת (דטרמיניסטי משוקלל בתוספת רף תיקו)
-                        max_prob_val = max(probs)
-                        sorted_probs = sorted(probs, reverse=True)
-                        
-                        if (sorted_probs[0] - sorted_probs[1]) < 0.05:
-                            # הפער בין התוצאה המובילה לבאה קטן מ-5%: תיקו
+                        if outcome == 'home':
+                            points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
+                        elif outcome == 'away':
+                            points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
+                        else:
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
                             points_sim[away_norm] = points_sim.get(away_norm, 0) + 1
-                        else:
-                            # התוצאה המשוקללת הגבוהה מנצחת
-                            outcome = outcomes[probs.index(max_prob_val)]
-                            if outcome == 'home':
-                                points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
-                            elif outcome == 'away':
-                                points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
-                            else:
-                                points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
-                                points_sim[away_norm] = points_sim.get(away_norm, 0) + 1
                             
                         simulated_games[home_norm] = simulated_games.get(home_norm, 0) + 1
                         simulated_games[away_norm] = simulated_games.get(away_norm, 0) + 1
@@ -769,35 +763,33 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             # חישוב הסתברויות מול קבוצה וירטואלית ממוצעת (PPG ממוצע של 1.0)
                             hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
                             
-                            ppg_team = max(ppg_dict.get(norm, 1.0), 0.5)
+                            # שקלול עדין (75% מודל מתמטי, 25% נתח כושר נוכחי) מול קבוצה וירטואלית
+                            ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
                             ppg_virtual = 1.0
-                            ppg_avg = (ppg_team + ppg_virtual) / 2.0
+                            total_ppg = ppg_team + ppg_virtual
                             
-                            hw_weighted = hw_prob_raw * ppg_team
-                            d_weighted = d_prob_raw * ppg_avg
-                            aw_weighted = aw_prob_raw * ppg_virtual
+                            team_form_share = ppg_team / total_ppg
+                            virtual_form_share = ppg_virtual / total_ppg
                             
-                            total_weight = hw_weighted + d_weighted + aw_weighted
-                            hw_final = hw_weighted / total_weight
-                            d_final = d_weighted / total_weight
-                            aw_final = aw_weighted / total_weight
+                            new_team_prob = (0.75 * hw_prob_raw) + (0.25 * team_form_share)
+                            new_virtual_prob = (0.75 * aw_prob_raw) + (0.25 * virtual_form_share)
+                            new_draw_prob = d_prob_raw * 0.9
+                            
+                            total_weight = new_team_prob + new_draw_prob + new_virtual_prob
+                            hw_final = new_team_prob / total_weight
+                            d_final = new_draw_prob / total_weight
+                            aw_final = new_virtual_prob / total_weight
                             
                             probs = [hw_final, d_final, aw_final]
                             outcomes = ['home', 'draw', 'away']
+                            outcome = np.random.choice(outcomes, p=probs)
                             
-                            max_prob_val = max(probs)
-                            sorted_probs = sorted(probs, reverse=True)
-                            
-                            if (sorted_probs[0] - sorted_probs[1]) < 0.05:
-                                points_sim[norm] += 1
+                            if outcome == 'home':
+                                points_sim[norm] += 3
+                            elif outcome == 'away':
+                                pass # הקבוצה הווירטואלית מנצחת, הקבוצה הנוכחית מקבלת 0
                             else:
-                                outcome = outcomes[probs.index(max_prob_val)]
-                                if outcome == 'home':
-                                    points_sim[norm] += 3
-                                elif outcome == 'away':
-                                    pass # הקבוצה הווירטואלית מנצחת, הנוכחית 0
-                                else:
-                                    points_sim[norm] += 1
+                                points_sim[norm] += 1
                             
                             simulated_games[norm] += 1
 
