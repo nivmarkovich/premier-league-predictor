@@ -711,7 +711,7 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         # חישוב הסתברויות גולמיות (מודל היסטורי)
                         hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
                         
-                        # שקלול עדין (75% מודל מתמטי, 25% נתח כושר נוכחי)
+                        # שקלול עדין (40% מודל מתמטי, 60% נתח כושר נוכחי)
                         ppg_home = max(ppg_dict.get(home_norm, 1.0), 0.1)
                         ppg_away = max(ppg_dict.get(away_norm, 1.0), 0.1)
                         total_ppg = ppg_home + ppg_away
@@ -719,9 +719,9 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         home_form_share = ppg_home / total_ppg
                         away_form_share = ppg_away / total_ppg
                         
-                        new_home_prob = (0.75 * hw_prob_raw) + (0.25 * home_form_share)
-                        new_away_prob = (0.75 * aw_prob_raw) + (0.25 * away_form_share)
-                        new_draw_prob = d_prob_raw * 0.9  # קנס קטן לתיקו כדי לעודד הכרעות
+                        new_home_prob = (0.40 * hw_prob_raw) + (0.60 * home_form_share)
+                        new_away_prob = (0.40 * aw_prob_raw) + (0.60 * away_form_share)
+                        new_draw_prob = (d_prob_raw + 0.24) / 2.0  # משיכה לממוצע הליגה (24%)
                         
                         # נרמול בחזרה ל-1.0
                         total_weight = new_home_prob + new_draw_prob + new_away_prob
@@ -763,7 +763,7 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             # חישוב הסתברויות מול קבוצה וירטואלית ממוצעת (PPG ממוצע של 1.0)
                             hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
                             
-                            # שקלול עדין (75% מודל מתמטי, 25% נתח כושר נוכחי) מול קבוצה וירטואלית
+                            # שקלול עדין (40% מודל מתמטי, 60% נתח כושר נוכחי) מול קבוצה וירטואלית
                             ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
                             ppg_virtual = 1.0
                             total_ppg = ppg_team + ppg_virtual
@@ -771,9 +771,9 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             team_form_share = ppg_team / total_ppg
                             virtual_form_share = ppg_virtual / total_ppg
                             
-                            new_team_prob = (0.75 * hw_prob_raw) + (0.25 * team_form_share)
-                            new_virtual_prob = (0.75 * aw_prob_raw) + (0.25 * virtual_form_share)
-                            new_draw_prob = d_prob_raw * 0.9
+                            new_team_prob = (0.40 * hw_prob_raw) + (0.60 * team_form_share)
+                            new_virtual_prob = (0.40 * aw_prob_raw) + (0.60 * virtual_form_share)
+                            new_draw_prob = (d_prob_raw + 0.24) / 2.0  # משיכה לממוצע הליגה (24%)
                             
                             total_weight = new_team_prob + new_draw_prob + new_virtual_prob
                             hw_final = new_team_prob / total_weight
