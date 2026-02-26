@@ -19,13 +19,18 @@
 4. הדפדפן ייפתח ותוכל לבחור שתי קבוצות ולקבל תחזית.
 """
 
+import time
 from pathlib import Path
+import difflib
+
+import plotly.graph_objects as go
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from api_data_fetcher import fetch_premier_league_standings_df
 
 # מייבאים פונקציות ולוגיקה מהסקריפט הקיים
 from premier_league_team_strength_model import (
@@ -124,6 +129,81 @@ def compute_match_outcome_probs(
 
 
 # ==========================
+# נתוני ליגה חיים מה-API
+# ==========================
+
+
+def normalize_team_name(name: str) -> str:
+    """
+    מנרמל שם קבוצה כדי לצמצם בעיות התאמה בין שמות מה-CSV לשמות מה-API.
+
+    פעולות:
+    - המרה לאותיות קטנות.
+    - החלפת מקפים/קו מפריד ברווח.
+    - הסרת נקודות ורווחים כפולים.
+    """
+
+    if not isinstance(name, str):
+        return ""
+
+    s = name.lower()
+    for ch in ["-", "–", "_"]:
+        s = s.replace(ch, " ")
+    for ch in ["."]:
+        s = s.replace(ch, "")
+    # נורמליזציה של רווחים
+    s = " ".join(s.split())
+    return s
+
+
+@st.cache_data
+def get_live_standings_df():
+    """
+    מושך את טבלת הפרמייר ליג העדכנית מ-API-Football ומחזיר DataFrame.
+    מוסיף גם עמודת שם מנורמל לצורך התאמות שמות (team_name_norm).
+    """
+
+    df = fetch_premier_league_standings_df()
+    if "team_name" not in df.columns:
+        raise ValueError("עמודת 'team_name' לא נמצאה בתוצאת ה-API.")
+
+    df = df.copy()
+    df["team_name_norm"] = df["team_name"].apply(normalize_team_name)
+    return df
+
+
+def find_team_in_standings(live_df: pd.DataFrame, team_name: str) -> pd.Series | None:
+    """
+    מחפש קבוצה מטבלת ה-API לפי שם הקבוצה מה-CSV, עם התאמה "רכה":
+    - קודם כל לפי התאמה מדויקת על שם מנורמל.
+    - אם אין, נשתמש ב-difflib.get_close_matches על רשימת השמות המנורמלים.
+    """
+
+    if live_df is None or live_df.empty:
+        return None
+
+    target = normalize_team_name(team_name)
+    if not target:
+        return None
+
+    # התאמה ישירה
+    exact_matches = live_df[live_df["team_name_norm"] == target]
+    if not exact_matches.empty:
+        return exact_matches.iloc[0]
+
+    # התאמה "רכה" באמצעות difflib
+    candidates = live_df["team_name_norm"].tolist()
+    matches = difflib.get_close_matches(target, candidates, n=1, cutoff=0.6)
+    if matches:
+        best = matches[0]
+        fuzzy_matches = live_df[live_df["team_name_norm"] == best]
+        if not fuzzy_matches.empty:
+            return fuzzy_matches.iloc[0]
+
+    return None
+
+
+# ==========================
 # פונקציות עזר עם cache
 # ==========================
 
@@ -160,7 +240,7 @@ def prepare_team_data(csv_path_str: str):
     # רשימת הקבוצות לצורך התפריטים הנפתחים
     clubs = team_features.index.tolist()
 
-    return X, y, clubs, feature_cols, team_features
+    return X, y, clubs, feature_cols, team_features, df_players_clean
 
 
 @st.cache_resource
@@ -174,13 +254,14 @@ def train_cached_model(csv_path_str: str):
       שוב ושוב בקריאות predict בלי המתנה מיותרת.
     """
 
-    X, y, clubs, feature_cols, team_features = prepare_team_data(csv_path_str)
+    X, y, clubs, feature_cols, team_features, df_players_clean = prepare_team_data(csv_path_str)
 
     # חלוקה ל-train/test כדי לשמור את אותם עקרונות נגד Overfitting
+    # משתמשים באותו יחס כמו בסקריפט האימון הראשי (40% ל-test)
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=0.25,
+        test_size=0.40,
         random_state=42,
         stratify=y,
     )
@@ -191,7 +272,7 @@ def train_cached_model(csv_path_str: str):
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
 
-    return model, X, y, clubs, feature_cols, team_features, acc
+    return model, X, y, clubs, feature_cols, team_features, acc, df_players_clean
 
 
 # ==========================
@@ -222,7 +303,7 @@ csv_path_input = st.sidebar.text_input(
 
 try:
     # מאמנים את המודל (או טוענים מה-cache)
-    model, X_all, y_all, clubs, feature_cols, team_features, test_accuracy = train_cached_model(
+    model, X_all, y_all, clubs, feature_cols, team_features, test_accuracy, df_players_clean = train_cached_model(
         csv_path_input
     )
 except FileNotFoundError as e:
@@ -240,6 +321,101 @@ except Exception as e:
 rtl_sidebar("<h4>מידע על המודל</h4>")
 rtl_sidebar(f"דיוק על סט הבדיקה (test accuracy): <b>{test_accuracy:.2%}</b>")
 rtl_sidebar(f"מספר קבוצות בדאטה: <b>{len(clubs)}</b>")
+
+# טבלת פרמייר ליג חיה בסיידבר
+rtl_sidebar("<h4>טבלת פרמייר ליג – זמן אמת</h4>")
+live_standings_df = None
+try:
+    live_standings_df = get_live_standings_df()
+    # בוחרים רק את העמודות החשובות להצגה (בלי form כדי למנוע גלילה אופקית)
+    cols_to_show = ["rank", "team_name", "played", "points"]
+    existing_cols = [c for c in cols_to_show if c in live_standings_df.columns]
+    sidebar_table = live_standings_df[existing_cols]
+    st.sidebar.dataframe(
+        sidebar_table,
+        width="stretch",
+        hide_index=True,  # הסתרת אינדקס ה-DataFrame
+    )
+except Exception as e:
+    rtl_sidebar(
+        f"לא הצלחתי לטעון את טבלת הליגה החיה מה-API.<br>"
+        f"פרטים טכניים: {e}"
+    )
+
+# כפתור סימולציית אלופה
+st.sidebar.markdown("---")
+rtl_sidebar("<h3>סימולטור אלופה 🏆</h3>")
+if st.sidebar.button("מי תקח אליפות? (סימולציה)"):
+    if live_standings_df is None or live_standings_df.empty:
+        st.sidebar.error("לא ניתן לדמות, הנתונים לא נטענו.")
+    else:
+        with st.sidebar.status("מחשב את המשך העונה...") as status:
+            time.sleep(2)  # אנימציית טעינה של כמה שניות
+            
+            # קבוצות טופ 5
+            top_5 = live_standings_df.head(5).copy()
+            
+            points_sim = {row['team_name_norm']: row['points'] for _, row in top_5.iterrows()}
+            team_names = top_5['team_name'].tolist()
+            team_norms = top_5['team_name_norm'].tolist()
+            
+            # פונקציית עזר למציאת הקבוצה ב-X_all
+            def get_csv_team_from_norm(norm):
+                for c in clubs:
+                    if normalize_team_name(c) == norm:
+                        return c
+                matches = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.6)
+                if matches:
+                    best = matches[0]
+                    for c in clubs:
+                        if normalize_team_name(c) == best:
+                            return c
+                return None
+            
+            # הדמיית משחקים וירטואליים בין הטופ 5
+            for i in range(len(team_norms)):
+                for j in range(i+1, len(team_norms)):
+                    norm_a = team_norms[i]
+                    norm_b = team_norms[j]
+                    
+                    csv_a = get_csv_team_from_norm(norm_a)
+                    csv_b = get_csv_team_from_norm(norm_b)
+                    
+                    if csv_a and csv_b and csv_a in X_all.index and csv_b in X_all.index:
+                        xa = X_all.loc[[csv_a]]
+                        xb = X_all.loc[[csv_b]]
+                        pa = float(model.predict_proba(xa)[0][1])
+                        pb = float(model.predict_proba(xb)[0][1])
+                        
+                        # סימולציית מונטה קרלו לפי הסתברויות
+                        hw_prob, d_prob, aw_prob = compute_match_outcome_probs(pa, pb, home_advantage=0.0)
+                        outcome = np.random.choice(['home', 'draw', 'away'], p=[hw_prob, d_prob, aw_prob])
+                        
+                        if outcome == 'home':
+                            points_sim[norm_a] += 3
+                        elif outcome == 'away':
+                            points_sim[norm_b] += 3
+                        else:
+                            points_sim[norm_a] += 1
+                            points_sim[norm_b] += 1
+            
+            # מציאת המנצחת בסימולציה
+            champion_norm = max(points_sim, key=points_sim.get)
+            champion_name = ""
+            for _, row in top_5.iterrows():
+                if row['team_name_norm'] == champion_norm:
+                    champion_name = row['team_name']
+                    break
+            
+            status.update(label="הסימולציה הושלמה!", state="complete", expanded=False)
+            
+        st.sidebar.markdown(
+            f"<div dir='rtl' style='text-align: right; background-color: #ffd700; color: #000; padding: 15px; border-radius: 10px; margin-top: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);'>"
+            f"<h3 style='margin:0; text-align:center;'>🏆 האלופה החזויה היא:</h3>"
+            f"<h2 style='margin:10px 0 0 0; text-align:center; color: #d32f2f;'>{champion_name}</h2>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
 st.markdown("---")
 rtl("<h3>בחר שתי קבוצות להשוואה</h3>")
@@ -316,6 +492,66 @@ if st.button("חשב הסתברות לכל קבוצה"):
 
     st.markdown("---")
 
+    # הקשר בזמן אמת מה-API
+    rtl("<h3>הקשר בזמן אמת (Real-time Context)</h3>")
+    if live_standings_df is not None:
+        row_home = find_team_in_standings(live_standings_df, team_a)
+        row_away = find_team_in_standings(live_standings_df, team_b)
+
+        col_ctx_home, col_ctx_away = st.columns(2)
+
+        with col_ctx_home:
+            if row_home is not None:
+                rank_home = row_home.get("rank", "?")
+                raw_form_home = row_home.get("form")
+
+                if raw_form_home:
+                    # הפורמט ב-football-data.org הוא לרוב "W,W,D,L,W" – מנקים פסיקים ורווחים
+                    form_home_clean = "".join([char for char in str(raw_form_home).upper() if char in ['W', 'D', 'L']])[-5:]
+                    rtl(
+                        f"{team_a}: מקום {rank_home}, רצף משחקים אחרונים:&nbsp;"
+                        f"<span style='display:inline-block;"
+                        f"background-color:#1e88e5;color:white;padding:4px 10px;"
+                        f"border-radius:12px;font-weight:bold;direction:ltr;'>"
+                        f"{form_home_clean}"
+                        f"</span>"
+                    )
+                else:
+                    # אין נתון form זמין מה-API – מציגים N/A בלי קוביית Form
+                    rtl(
+                        f"{team_a}: מקום {rank_home}, רצף משחקים אחרונים: N/A"
+                    )
+            else:
+                rtl(
+                    f"לא נמצאו נתוני ליגה חיים מתאימים עבור {team_a} (ייתכן הבדל בשם בין ה-CSV ל-API)."
+                )
+
+        with col_ctx_away:
+            if row_away is not None:
+                rank_away = row_away.get("rank", "?")
+                raw_form_away = row_away.get("form")
+
+                if raw_form_away:
+                    form_away_clean = "".join([char for char in str(raw_form_away).upper() if char in ['W', 'D', 'L']])[-5:]
+                    rtl(
+                        f"{team_b}: מקום {rank_away}, רצף משחקים אחרונים:&nbsp;"
+                        f"<span style='display:inline-block;"
+                        f"background-color:#43a047;color:white;padding:4px 10px;"
+                        f"border-radius:12px;font-weight:bold;direction:ltr;'>"
+                        f"{form_away_clean}"
+                        f"</span>"
+                    )
+                else:
+                    rtl(
+                        f"{team_b}: מקום {rank_away}, רצף משחקים אחרונים: N/A"
+                    )
+            else:
+                rtl(
+                    f"לא נמצאו נתוני ליגה חיים מתאימים עבור {team_b} (ייתכן הבדל בשם בין ה-CSV ל-API)."
+                )
+    else:
+        rtl("לא ניתן להציג הקשר בזמן אמת כיוון שטבלת ה-API לא נטענה בהצלחה.")
+
     # קביעה מי "פייבוריט" לפי הסתברות גבוהה יותר
     eps = 1e-3  # טולרנס קטן בשביל הבדלים זניחים
     if abs(proba_a - proba_b) < eps:
@@ -336,3 +572,58 @@ if st.button("חשב הסתברות לכל קבוצה"):
         "זו כמובן הערכה גסה בלבד, המבוססת על סטטיסטיקות היסטוריות של השחקנים בלבד "
         "ולא על פקטורים כמו פציעות, בית/חוץ, כושר נוכחי ועוד."
     )
+
+    st.markdown("---")
+    
+    # ------------------
+    # גרף השוואה חי (Head-to-Head)
+    # ------------------
+    rtl("<h3>השוואת סטטיסטיקות העונה (Live Data)</h3>")
+    
+    if live_standings_df is not None:
+        row_a = find_team_in_standings(live_standings_df, team_a)
+        row_b = find_team_in_standings(live_standings_df, team_b)
+        
+        if row_a is not None and row_b is not None:
+            # חילוץ נתונים להשוואה
+            categories = ["נקודות (Points)", "שערי זכות (Goals For)", "שערי חובה (Goals Against)"]
+            
+            vals_a = [
+                row_a.get("points", 0),
+                row_a.get("goals_for", 0),
+                row_a.get("goals_against", 0)
+            ]
+            
+            vals_b = [
+                row_b.get("points", 0),
+                row_b.get("goals_for", 0),
+                row_b.get("goals_against", 0)
+            ]
+            
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=categories,
+                y=vals_a,
+                name=team_a,
+                marker_color="#1e88e5"
+            ))
+            fig.add_trace(go.Bar(
+                x=categories,
+                y=vals_b,
+                name=team_b,
+                marker_color="#43a047"
+            ))
+            
+            fig.update_layout(
+                barmode='group',
+                xaxis_title="קטגוריות",
+                yaxis_title="ערך",
+                legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.8)"),
+                margin=dict(l=20, r=20, t=30, b=20),
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            rtl("לא נמצאו מספיק נתונים חיים (Live Data) להצגת הגרף עבור שתי הקבוצות.")
+    else:
+        rtl("הנתונים החיים לא נטענו, לא ניתן להציג את הגרף.")

@@ -28,10 +28,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 
 
@@ -209,8 +207,9 @@ def build_train_test(team_features: pd.DataFrame):
 
     # train/test split
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=0.25,
+        X,
+        y,
+        test_size=0.40,  # 40% מהקבוצות לבדיקת המודל (כ ~8 קבוצות)
         random_state=42,
         stratify=y,  # שומר על יחס קלאסים דומה ב-train ו-test
     )
@@ -218,45 +217,49 @@ def build_train_test(team_features: pd.DataFrame):
     return X_train, X_test, y_train, y_test, feature_cols
 
 
-def train_model(X_train, y_train) -> Pipeline:
+def train_model(X_train, y_train):
     """
-    מאמן Pipeline של:
-    StandardScaler -> LogisticRegression
+    מאמן RandomForestClassifier על פיצ'רי הקבוצות, עם כוונון אוטומטי
+    של ההיפר-פרמטרים בעזרת GridSearchCV.
 
-    למה בחירה כזו טובה לפרויקט CV וכיצד היא מונעת Overfitting?
-
-    - StandardScaler:
-      מנרמל את כל הפיצ'רים לאותה סקלה (ממוצע 0, סטיית תקן 1),
-      כך שאף פיצ'ר בודד לא "ישלוט" על הפונקציה המפרידה.
-      זה עוזר למודל להתכנס ולבנות משקולות מאוזנות.
-    - LogisticRegression עם penalty='l2':
-      זה מודל ליניארי עם רגולריזציה L2 (ברירת מחדל ב-sklearn),
-      כלומר הוא 'מעונש' על משקולות גדולות מדי.
-      התוצאה: פחות Overfitting, יותר הכללה לנתונים חדשים.
-    - המודל יחסית פשוט ומוסבר (explainable), מה שנראה מקצועי ב-CV
-      אבל עדיין קריא וקל להבנה.
+    כוונון (tuning) בעזרת GridSearchCV:
+    - בוחנים כמה קומבינציות סבירות של hyperparameters (n_estimators, max_depth,
+      min_samples_split) על סט האימון בלבד.
+    - משתמשים ב-cross-validation פנימי כדי לבחור את הקומבינציה שנותנת ביצועים
+      טובים יותר באופן עקבי, ולא רק במקרה על חלוקה אחת.
+    - לאחר מכן מאמנים מחדש את המודל המנצח על כל סט האימון.
     """
 
-    model = Pipeline(
-        steps=[
-            ("scaler", StandardScaler()),
-            (
-                "clf",
-                LogisticRegression(
-                    penalty="l2",
-                    C=1.0,        # עוצמת רגולריזציה (ערך נמוך יותר = יותר רגולריזציה)
-                    max_iter=1000,
-                    solver="lbfgs",
-                ),
-            ),
-        ]
+    base_model = RandomForestClassifier(
+        random_state=42,
+        n_jobs=-1,
     )
 
-    model.fit(X_train, y_train)
-    return model
+    param_grid = {
+        "n_estimators": [50, 100, 200],
+        "max_depth": [None, 5, 10],
+        "min_samples_split": [2, 5],
+    }
+
+    grid_search = GridSearchCV(
+        estimator=base_model,
+        param_grid=param_grid,
+        cv=3,
+        scoring="accuracy",
+        n_jobs=-1,
+        verbose=0,
+    )
+
+    grid_search.fit(X_train, y_train)
+
+    print("Best hyperparameters found by GridSearchCV:")
+    print(grid_search.best_params_)
+
+    best_model = grid_search.best_estimator_
+    return best_model
 
 
-def evaluate_model(model: Pipeline, X_test, y_test):
+def evaluate_model(model, X_test, y_test):
     """
     מדפיס מדדי ביצוע בסיסיים של המודל על סט הבדיקה (test set).
 
