@@ -228,7 +228,9 @@ def normalize_team_name(name: str) -> str:
 
     פעולות:
     - המרה לאותיות קטנות.
+    - החלפות קבועות לכינויים מוכרים (Aliasing).
     - החלפת מקפים/קו מפריד ברווח.
+    - הסרת עוגנים קבועים כמו fc, afc.
     - הסרת נקודות ורווחים כפולים.
     """
 
@@ -236,10 +238,45 @@ def normalize_team_name(name: str) -> str:
         return ""
 
     s = name.lower()
-    for ch in ["-", "–", "_"]:
+    
+    # תרגום חריגים ידועים מה-API לקבוצות שלנו
+    aliases = {
+        "man united": "manchester united",
+        "man utd": "manchester united",
+        "manchester united fc": "manchester united",
+        "spurs": "tottenham hotspur",
+        "tottenham": "tottenham hotspur",
+        "nott'm forest": "nottingham forest",
+        "nottingham": "nottingham forest",
+        "wolves": "wolverhampton wanderers",
+        "wolverhampton": "wolverhampton wanderers",
+        "newcastle": "newcastle united",
+        "newcastle utd": "newcastle united",
+        "brighton": "brighton hove albion",
+        "brighton & hove albion fc": "brighton hove albion",
+        "leicester": "leicester city",
+        "leeds": "leeds united",
+        "west ham": "west ham united",
+        "aston villa": "aston villa",
+        "aston villa fc": "aston villa",
+        "arsenal fc": "arsenal",
+        "chelsea fc": "chelsea",
+        "liverpool fc": "liverpool",
+        "manchester city fc": "manchester city"
+    }
+    
+    for k, v in aliases.items():
+        if s == k:
+            s = v
+            break # No need to continue if exact match alias found
+            
+    for ch in ["-", "–", "_", "&"]:
         s = s.replace(ch, " ")
     for ch in ["."]:
         s = s.replace(ch, "")
+        
+    s = s.replace(" fc", "").replace(" afc", "").replace(" utd", " united")
+    
     s = " ".join(s.split())
     return s
 

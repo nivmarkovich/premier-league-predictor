@@ -661,22 +661,31 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                 simulated_games = {row['team_name_norm']: 0 for _, row in live_standings_df.iterrows()}
                 played_games = {row['team_name_norm']: row.get('played', 0) for _, row in live_standings_df.iterrows()}
                 
-                # עזר למציאת קבוצה ב-X_all
+                # עזר למציאת קבוצה ב-X_all ובטבלה
                 def get_csv_team(norm):
                     for c in clubs:
                         if normalize_team_name(c) == norm:
                             return c
-                    m = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.6)
+                    m = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.5)
                     if m:
                         best = m[0]
                         for c in clubs:
                             if normalize_team_name(c) == best:
                                 return c
                     return None
+                    
+                def get_standings_team(norm):
+                    keys = list(points_sim.keys())
+                    if norm in keys:
+                        return norm
+                    m = difflib.get_close_matches(norm, keys, n=1, cutoff=0.5)
+                    if m:
+                        return m[0]
+                    return norm
 
                 for f in fixtures:
-                    home_norm = f['home_team_norm']
-                    away_norm = f['away_team_norm']
+                    home_norm = get_standings_team(f['home_team_norm'])
+                    away_norm = get_standings_team(f['away_team_norm'])
                     
                     csv_home = get_csv_team(home_norm)
                     csv_away = get_csv_team(away_norm)
@@ -723,13 +732,12 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                             
                             simulated_games[norm] += 1
 
-                # בניית הטבלה הסופית
+                # בניית הטבלה הסופית (ללא עמודת בקרה)
                 final_rows = []
                 for _, row in live_standings_df.iterrows():
                     norm = row['team_name_norm']
                     final_rows.append({
                         "קבוצה": row['team_name'],
-                        "משחקים שסומלצו": simulated_games.get(norm, 0),
                         "נקודות סופיות": points_sim.get(norm, row['points'])
                     })
                 
