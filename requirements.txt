@@ -3,4 +3,5 @@ pandas
 scikit-learn
 requests
 lxml
+python-dotenv
 plotly
