@@ -369,19 +369,10 @@ rtl(
     "ועל בסיס זה מעריך מי הפייבוריט התיאורטי במשחק ביניהן."
 )
 
-# בחירת נתיב לקובץ ה-CSV (עם ברירת מחדל מהסקריפט המקורי)
-rtl_sidebar("<h3>הגדרות נתונים</h3>")
-default_path_str = str(DEFAULT_CSV_PATH)
-csv_path_input = st.sidebar.text_input(
-    "נתיב לקובץ השחקנים (CSV)",
-    value=default_path_str,
-    help="ברירת מחדל: אותו נתיב שמוגדר בקובץ premier_league_team_strength_model.py",
-)
-
 try:
     # מאמנים את המודל (או טוענים מה-cache)
     model, X_all, y_all, clubs, feature_cols, team_features, test_accuracy, df_players_clean = train_cached_model(
-        csv_path_input
+        str(DEFAULT_CSV_PATH)
     )
 except FileNotFoundError as e:
     rtl(
@@ -418,83 +409,6 @@ except Exception as e:
         f"לא הצלחתי לטעון את טבלת הליגה החיה מה-API.<br>"
         f"פרטים טכניים: {e}"
     )
-
-# כפתור סימולציית אלופה
-st.sidebar.markdown("---")
-rtl_sidebar("<h3>סימולטור אלופה 🏆</h3>")
-if st.sidebar.button("מי תקח אליפות? (סימולציה)"):
-    if live_standings_df is None or live_standings_df.empty:
-        st.sidebar.error("לא ניתן לדמות, הנתונים לא נטענו.")
-    else:
-        with st.sidebar.status("מחשב את המשך העונה...") as status:
-            time.sleep(2)  # אנימציית טעינה של כמה שניות
-            
-            # קבוצות טופ 5
-            top_5 = live_standings_df.head(5).copy()
-            
-            points_sim = {row['team_name_norm']: row['points'] for _, row in top_5.iterrows()}
-            team_names = top_5['team_name'].tolist()
-            team_norms = top_5['team_name_norm'].tolist()
-            
-            # פונקציית עזר למציאת הקבוצה ב-X_all
-            def get_csv_team_from_norm(norm):
-                for c in clubs:
-                    if normalize_team_name(c) == norm:
-                        return c
-                matches = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.6)
-                if matches:
-                    best = matches[0]
-                    for c in clubs:
-                        if normalize_team_name(c) == best:
-                            return c
-                return None
-            
-            # הדמיית משחקים וירטואליים בין הטופ 5
-            for i in range(len(team_norms)):
-                for j in range(i+1, len(team_norms)):
-                    norm_a = team_norms[i]
-                    norm_b = team_norms[j]
-                    
-                    csv_a = get_csv_team_from_norm(norm_a)
-                    csv_b = get_csv_team_from_norm(norm_b)
-                    
-                    if csv_a and csv_b and csv_a in X_all.index and csv_b in X_all.index:
-                        xa = X_all.loc[[csv_a]]
-                        xb = X_all.loc[[csv_b]]
-                        pa = float(model.predict_proba(xa)[0][1])
-                        pb = float(model.predict_proba(xb)[0][1])
-                        
-                        # סימולציית מונטה קרלו לפי הסתברויות
-                        hw_prob, d_prob, aw_prob = compute_match_outcome_probs(pa, pb, home_advantage=0.0)
-                        outcome = np.random.choice(['home', 'draw', 'away'], p=[hw_prob, d_prob, aw_prob])
-                        
-                        if outcome == 'home':
-                            points_sim[norm_a] += 3
-                        elif outcome == 'away':
-                            points_sim[norm_b] += 3
-                        else:
-                            points_sim[norm_a] += 1
-                            points_sim[norm_b] += 1
-            
-            # מציאת המנצחת בסימולציה
-            champion_norm = max(points_sim, key=points_sim.get)
-            champion_name = ""
-            for _, row in top_5.iterrows():
-                if row['team_name_norm'] == champion_norm:
-                    champion_name = row['team_name']
-                    break
-            
-            status.update(label="הסימולציה הושלמה!", state="complete", expanded=False)
-            
-        st.sidebar.markdown(
-            f"<div dir='rtl' style='text-align: right; background-color: #ffd700; color: #000; padding: 15px; border-radius: 10px; margin-top: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);'>"
-            f"<h3 style='margin:0; text-align:center;'>🏆 האלופה החזויה היא:</h3>"
-            f"<h2 style='margin:10px 0 0 0; text-align:center; color: #d32f2f;'>{champion_name}</h2>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-
-st.markdown("---")
 rtl("<h3>בחר שתי קבוצות להשוואה</h3>")
 
 if len(clubs) < 2:
@@ -723,4 +637,89 @@ if st.button("חשב הסתברות לכל קבוצה"):
     else:
         rtl("הנתונים החיים לא נטענו, לא ניתן להציג את הגרף.")
         
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # ------------------
+    # סימולטור דטרמיניסטי לטבלת סוף העונה
+    # ------------------
+    st.markdown('<div class="st-card">', unsafe_allow_html=True)
+    rtl("<h3 class='text-center'>חזה את טבלת סוף העונה (מבוסס על משחקים עתידיים) 🏆</h3>")
+    
+    if st.button("חשב טבלה סופית 🏆", use_container_width=True):
+        if live_standings_df is None or live_standings_df.empty:
+            rtl("לא ניתן לדמות, נתוני הטבלה אינם זמינים.")
+        else:
+            with st.spinner("מושך משחקים עתידיים ומחשב..."):
+                from api_data_fetcher import fetch_remaining_fixtures
+                try:
+                    fixtures = fetch_remaining_fixtures()
+                    
+                    # מעתיק את הנקודות הנוכחיות
+                    points_sim = {row['team_name_norm']: row['points'] for _, row in live_standings_df.iterrows()}
+                    
+                    # עזר למציאת קבוצה ב-X_all
+                    def get_csv_team(norm):
+                        for c in clubs:
+                            if normalize_team_name(c) == norm:
+                                return c
+                        m = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.6)
+                        if m:
+                            best = m[0]
+                            for c in clubs:
+                                if normalize_team_name(c) == best:
+                                    return c
+                        return None
+
+                    for f in fixtures:
+                        home_norm = f['home_team_norm']
+                        away_norm = f['away_team_norm']
+                        
+                        csv_home = get_csv_team(home_norm)
+                        csv_away = get_csv_team(away_norm)
+                        
+                        if csv_home and csv_away and csv_home in X_all.index and csv_away in X_all.index:
+                            x_h = X_all.loc[[csv_home]]
+                            x_a = X_all.loc[[csv_away]]
+                            p_home = float(model.predict_proba(x_h)[0][1])
+                            p_away = float(model.predict_proba(x_a)[0][1])
+                            
+                            # סימולציה דטרמיניסטית
+                            if p_home > p_away + 0.05:
+                                points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
+                            elif p_away > p_home + 0.05:
+                                points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
+                            else:
+                                points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
+                                points_sim[away_norm] = points_sim.get(away_norm, 0) + 1
+
+                    # בניית הטבלה הסופית
+                    final_rows = []
+                    for _, row in live_standings_df.iterrows():
+                        norm = row['team_name_norm']
+                        final_rows.append({
+                            "קבוצה": row['team_name'],
+                            "נקודות סופיות": points_sim.get(norm, row['points'])
+                        })
+                    
+                    final_df = pd.DataFrame(final_rows)
+                    final_df = final_df.sort_values(by="נקודות סופיות", ascending=False).reset_index(drop=True)
+                    final_df.index = final_df.index + 1 # 1-indexed
+                    
+                    # צביעת שורות Pandas Styler
+                    def highlight_table(s):
+                        if s.name == 1:
+                            return ['background-color: rgba(255, 215, 0, 0.3); color: white;'] * len(s) # Gold
+                        elif 2 <= s.name <= 4:
+                            return ['background-color: rgba(76, 175, 80, 0.3); color: white;'] * len(s) # CL green
+                        elif 18 <= s.name <= 20:
+                            return ['background-color: rgba(244, 67, 54, 0.3); color: white;'] * len(s) # Relegation red
+                        return [''] * len(s)
+
+                    styled_df = final_df.style.apply(highlight_table, axis=1)
+                    
+                    st.dataframe(styled_df, use_container_width=True)
+                    
+                except Exception as e:
+                    st.error(f"שגיאה במהלך הסימולציה: {e}")
+                    
     st.markdown('</div>', unsafe_allow_html=True)
