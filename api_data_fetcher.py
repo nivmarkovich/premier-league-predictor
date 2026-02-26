@@ -385,6 +385,28 @@ def fetch_premier_league_standings_df(
     return df
 
 
+def fetch_remaining_fixtures(config: Optional[APIFootballConfig] = None) -> List[Dict[str, str]]:
+    """
+    מביא את כל המשחקים שעוד לא שוחקו (status=SCHEDULED) בפרמייר ליג.
+    מחזיר רשימה של מילונים עם שמות הקבוצות מנורמלים.
+    """
+    raw = _api_get("/competitions/PL/matches", params={"status": "SCHEDULED"}, config=config)
+    matches = raw.get("matches", [])
+    
+    fixtures = []
+    for match in matches:
+        home_team = match.get("homeTeam", {}).get("name")
+        away_team = match.get("awayTeam", {}).get("name")
+        if home_team and away_team:
+            fixtures.append({
+                "home_team_norm": normalize_team_name(home_team),
+                "away_team_norm": normalize_team_name(away_team),
+                "home_team_raw": home_team,
+                "away_team_raw": away_team
+            })
+    return fixtures
+
+
 if __name__ == "__main__":
     """
     דוגמה להרצה עצמאית מהטרמינל:
