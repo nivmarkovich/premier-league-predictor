@@ -698,9 +698,16 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_home = float(model.predict_proba(x_h)[0][1])
                         p_away = float(model.predict_proba(x_a)[0][1])
                         
-                        # סימולציה סטוכאסטית (מונטה קרלו)
+                        # סימולציה היברידית (דטרמיניסטי + מונטה קרלו)
                         hw_prob, d_prob, aw_prob = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
-                        outcome = np.random.choice(['home', 'draw', 'away'], p=[hw_prob, d_prob, aw_prob])
+                        probs = [hw_prob, d_prob, aw_prob]
+                        outcomes = ['home', 'draw', 'away']
+                        max_prob = max(probs)
+                        
+                        if max_prob >= 0.55:
+                            outcome = outcomes[probs.index(max_prob)]
+                        else:
+                            outcome = np.random.choice(outcomes, p=probs)
                         
                         if outcome == 'home':
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
@@ -728,9 +735,16 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_team = float(model.predict_proba(x_team)[0][1])
                         
                         for _ in range(missing):
-                            # סימולציה סטוכאסטית מול קבוצה ממוצעת
+                            # סימולציה היברידית מול קבוצה ממוצעת
                             hw_prob, d_prob, aw_prob = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
-                            outcome = np.random.choice(['home', 'draw', 'away'], p=[hw_prob, d_prob, aw_prob])
+                            probs = [hw_prob, d_prob, aw_prob]
+                            outcomes = ['home', 'draw', 'away']
+                            max_prob = max(probs)
+                            
+                            if max_prob >= 0.55:
+                                outcome = outcomes[probs.index(max_prob)]
+                            else:
+                                outcome = np.random.choice(outcomes, p=probs)
                             
                             if outcome == 'home':
                                 points_sim[norm] += 3
