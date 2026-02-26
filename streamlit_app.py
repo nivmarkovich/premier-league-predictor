@@ -63,12 +63,13 @@ def inject_global_css() -> None:
         
         /* מחלקת כרטיסייה (Card) שנעטוף בה אזורים מרכזיים */
         .st-card {
-            background-color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.05); /* מותאם ל-Dark Mode */
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-            border: 1px solid #f0f0f0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff; /* טקסט לבן ל-Dark Mode */
         }
 
         /* מחלקות ייעודיות לטקסט ממורכז */
@@ -79,7 +80,7 @@ def inject_global_css() -> None:
         .score-board-team {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #333333;
+            color: white !important; /* כדי לבלוט ב-Dark Mode */
         }
         
         .score-board-prob {
@@ -123,8 +124,9 @@ def render_colored_form_badge(form_str: str) -> str:
             
         html_parts.append(
             f"<span style='display:inline-block; background-color:{bg_color}; "
-            f"color:white; padding:4px 8px; margin: 0 2px; border-radius:6px; "
-            f"font-weight:bold; font-size: 0.85em; width: 15px; text-align: center;'>{char}</span>"
+            f"width:32px; height:32px; line-height:32px; text-align:center; "
+            f"border-radius:4px; font-weight:bold; margin: 0 2px; color:white !important; "
+            f"font-size: 0.85em;'>{char}</span>"
         )
     return "".join(html_parts)
 
