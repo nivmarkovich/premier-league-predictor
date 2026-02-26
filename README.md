@@ -1,35 +1,39 @@
-# ⚽ Premier League Match Predictor (v2.0)
+# ⚽ Premier League Predictor & Season Simulator (v3.0)
 
-A dynamic, end-to-end Machine Learning web application that predicts Premier League team strengths, simulates matchups, and forecasts the season champion using live data.
+A dynamic, end-to-end Machine Learning web application that predicts Premier League match outcomes and simulates the final league table using live data, historical stats, and Expected Points (EV) mathematics.
 
-**🔗 [Live Demo: Play with the App here!](https://premier-league-predictor-gq6jzykutzbajpzy7afvwh.streamlit.app/)**
+**🔗 [Live Demo: Play with the App here!]([[INSERT_YOUR_APP_LINK_HERE]](https://premier-league-predictor-gq6jzykutzbajpzy7afvwh.streamlit.app/))**
 
-## 🚀 What's New in v2.0?
-The project has evolved from a static model running on local CSV files to a live web application:
-* **Live API Integration:** Fetches real-time standings and team data via `football-data.org`.
-* **Web Scraping:** Built a custom scraper using `pandas.read_html` and `requests` (with User-Agent spoofing to bypass 403 errors) to extract current "Form" (Last 5 matches) data. Cleaned dirty HTML strings using Regex.
-* **Improved Model Accuracy:** Optimized the Random Forest classifier. Adjusted the Train/Test split ratios and utilized `GridSearchCV` for hyperparameter tuning, successfully increasing the model's test accuracy from 80% to 87.5%.
-* **Stochastic Monte Carlo Simulator:** Added a "Predict Champion" feature. Instead of deterministic outputs, the simulator uses the model's `predict_proba` as weighted probabilities to simulate matchups between top-tier teams, introducing realistic variance.
-* **Advanced Data Viz:** Integrated `Plotly` for interactive Head-to-Head (H2H) statistical comparisons based on live data.
-* **Cloud Deployment:** Hosted seamlessly on Streamlit Community Cloud.
+## 🚀 Key Features & The Math Behind the App
+This project evolved from a static Random Forest model to a robust, live-updating forecasting engine:
+
+* **Expected Points (EV) Simulator:** Instead of relying on high-variance Monte Carlo simulations ("dice rolls"), the season simulator calculates the precise Expected Points for each future match based on combined probabilities, ensuring a realistic and statistically sound final league table.
+* **Smart Probability Blending:** The prediction engine uses a sophisticated weighted approach to reflect true football reality:
+  * **Current Form (PPG Power Law):** Heavily weights the current season's Points Per Game to capture momentum.
+  * **Head-to-Head (H2H):** Factors in the results of the first-round fixtures between the teams.
+  * **Historical ML Model:** Uses a tuned `RandomForestClassifier` (87.5% accuracy) trained on historical Premier League data to establish baseline team strength.
+* **Live API Integration:** Fetches real-time standings and remaining scheduled fixtures via `football-data.org`.
+* **Advanced Data Engineering & Fallbacks:** * Implemented `difflib` and Hardcoded Manual Mapping to handle stubborn "Name Mismatches" between API endpoints (e.g., *Brentford* vs *Brentford FC*).
+  * Built `try...except` fallback mechanisms to generate form-based predictions even for newly promoted teams (Out-of-Vocabulary handling) that the historical ML model doesn't recognize.
+* **Modern UI/UX:** A custom-styled Streamlit interface featuring dynamic Head-to-Head probability scoreboards, visual form guides (W/D/L), and color-coded final standings.
 
 ## 🛠️ Tech Stack
 * **Language:** Python 3
-* **Machine Learning:** Scikit-Learn (Random Forest, GridSearchCV)
-* **Data Engineering:** Pandas, NumPy
-* **Data Collection:** REST APIs, Web Scraping (`BeautifulSoup`, `lxml`)
-* **Frontend & Visualization:** Streamlit, Plotly
-* **Deployment:** Streamlit Community Cloud, GitHub
+* **Machine Learning:** Scikit-Learn (Random Forest, GridSearchCV), Expected Value (EV) Mathematics
+* **Data Engineering:** Pandas, NumPy, Difflib
+* **Data Collection:** REST APIs (`requests`)
+* **Frontend & Visualization:** Streamlit, Plotly, Custom CSS Injection
+* **Deployment:** Streamlit Community Cloud, GitHub CI/CD
 
 ## 📂 Project Structure
-* `streamlit_app.py`: The main frontend application and UI logic.
-* `premier_league_team_strength_model.py`: The core ML pipeline (data cleaning, training, and evaluation).
-* `api_data_fetcher.py`: Handles API requests and the Web Scraping logic.
-* `data/`: Contains the historical `premier_league_players.csv` dataset used to train the base model.
+* `streamlit_app.py`: The main frontend application, UI styling, and Expected Points simulation loop.
+* `premier_league_team_strength_model.py`: The core ML pipeline (data cleaning, training, and model export).
+* `api_data_fetcher.py`: Handles API requests, live standings, remaining fixtures, and H2H data.
+* `data/`: Contains the historical datasets used to train the base model.
 * `requirements.txt`: Dependencies for cloud deployment.
 
 ## 💻 Run it Locally
 1. Clone this repository.
 2. Install dependencies: `pip install -r requirements.txt`
 3. Create a `.env` file in the root directory and add your API key: `FOOTBALL_DATA_ORG_KEY=your_api_key_here`
-4. Run the app: `python -m streamlit run streamlit_app.py`
+4. Run the app: `streamlit run streamlit_app.py`
