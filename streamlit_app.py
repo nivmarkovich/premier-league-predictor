@@ -698,10 +698,13 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_home = float(model.predict_proba(x_h)[0][1])
                         p_away = float(model.predict_proba(x_a)[0][1])
                         
-                        # סימולציה דטרמיניסטית
-                        if p_home > p_away + 0.035:
+                        # סימולציה סטוכאסטית (מונטה קרלו)
+                        hw_prob, d_prob, aw_prob = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
+                        outcome = np.random.choice(['home', 'draw', 'away'], p=[hw_prob, d_prob, aw_prob])
+                        
+                        if outcome == 'home':
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 3
-                        elif p_away > p_home + 0.035:
+                        elif outcome == 'away':
                             points_sim[away_norm] = points_sim.get(away_norm, 0) + 3
                         else:
                             points_sim[home_norm] = points_sim.get(home_norm, 0) + 1
@@ -725,9 +728,13 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         p_team = float(model.predict_proba(x_team)[0][1])
                         
                         for _ in range(missing):
-                            if p_team > avg_p + 0.035:
+                            # סימולציה סטוכאסטית מול קבוצה ממוצעת
+                            hw_prob, d_prob, aw_prob = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
+                            outcome = np.random.choice(['home', 'draw', 'away'], p=[hw_prob, d_prob, aw_prob])
+                            
+                            if outcome == 'home':
                                 points_sim[norm] += 3
-                            elif avg_p > p_team + 0.035:
+                            elif outcome == 'away':
                                 pass # קבוצה וירטואלית מנצחת ממוצעת, הקבוצה הנוכחית מקבלת 0
                             else:
                                 points_sim[norm] += 1
