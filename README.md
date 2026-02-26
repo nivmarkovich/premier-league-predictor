@@ -2,7 +2,7 @@
 
 A dynamic, end-to-end Machine Learning web application that predicts Premier League match outcomes and simulates the final league table using live data, historical stats, and Expected Points (EV) mathematics.
 
-**🔗 [Live Demo: Play with the App here!]([[INSERT_YOUR_APP_LINK_HERE]](https://premier-league-predictor-gq6jzykutzbajpzy7afvwh.streamlit.app/))**
+**🔗 [Live Demo: Play with the App here!]((https://premier-league-predictor-gq6jzykutzbajpzy7afvwh.streamlit.app/))**
 
 ## 🚀 Key Features & The Math Behind the App
 This project evolved from a static Random Forest model to a robust, live-updating forecasting engine:
@@ -37,3 +37,4 @@ This project evolved from a static Random Forest model to a robust, live-updatin
 2. Install dependencies: `pip install -r requirements.txt`
 3. Create a `.env` file in the root directory and add your API key: `FOOTBALL_DATA_ORG_KEY=your_api_key_here`
 4. Run the app: `streamlit run streamlit_app.py`
+
