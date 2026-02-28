@@ -536,9 +536,9 @@ if st.button("חשב הסתברות לכל קבוצה"):
         home_form_share = power_a / (power_a + power_b)
         away_form_share = power_b / (power_a + power_b)
         
-    # Blending Strengths (30% Historical / 70% Live Form) BEFORE computing outcome breakdown
-    strength_a = (0.30 * proba_a) + (0.70 * home_form_share)
-    strength_b = (0.30 * proba_b) + (0.70 * away_form_share)
+    # Blending Strengths (10% Historical / 90% Live Form) BEFORE computing outcome breakdown
+    strength_a = (0.10 * proba_a) + (0.90 * home_form_share)
+    strength_b = (0.10 * proba_b) + (0.90 * away_form_share)
         
     # חישוב הסתברויות לתוצאת משחק (Home / Draw / Away) על בסיס הכוח המשוקלל
     home_win_prob, draw_prob, away_win_prob = compute_match_outcome_probs(
@@ -615,27 +615,30 @@ if st.button("חשב הסתברות לכל קבוצה"):
         "</p>"
     )
     
-    with st.expander("דוח דיבוג אלגוריתם - מאחורי הקלעים"):
-        st.markdown(f"**{team_a} (Home)**")
-        st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_a:.3f}")
-        st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {home_form_share:.1%}")
-        st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_a:.1%} (אחרי פנלטי אם הופעל)")
-        st.markdown(f"- **כוח משוקלל סופי (Strength A):** {strength_a:.1%}")
-        st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_a}")
-        
-        st.markdown("---")
-        
-        st.markdown(f"**{team_b} (Away)**")
-        st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_b:.3f}")
-        st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {away_form_share:.1%}")
-        st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_b:.1%} (אחרי פנלטי אם הופעל)")
-        st.markdown(f"- **כוח משוקלל סופי (Strength B):** {strength_b:.1%}")
-        st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_b}")
-        
-        st.markdown("---")
-        
-        st.markdown("**נוסחת השילוב (Blend Strength):**")
-        st.code("Strength = (0.30 * Historical) + (0.70 * Live_Form_Share)\nCompute_Match_Probs(Strength_A, Strength_B)", language="python")
+    # --- DEBUG EXPANDER (Commented out per user request for privacy) ---
+    # with st.expander("דוח דיבוג אלגוריתם - מאחורי הקלעים"):
+    #     st.markdown(f"**{team_a} (Home)**")
+    #     st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_a:.3f}")
+    #     st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {home_form_share:.1%}")
+    #     st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_a:.1%} (אחרי פנלטי אם הופעל)")
+    #     st.markdown(f"- **כוח משוקלל סופי (Strength A):** {strength_a:.1%}")
+    #     st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_a}")
+    #     
+    #     st.markdown("---")
+    #     
+    #     st.markdown(f"**{team_b} (Away)**")
+    #     st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_b:.3f}")
+    #     st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {away_form_share:.1%}")
+    #     st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_b:.1%} (אחרי פנלטי אם הופעל)")
+    #     st.markdown(f"- **כוח משוקלל סופי (Strength B):** {strength_b:.1%}")
+    #     st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_b}")
+    #     
+    #     st.markdown("---")
+    #     
+    #     st.markdown("**נוסחת השילוב (Blend Strength):**")
+    #     st.code("Strength = (0.10 * Historical) + (0.90 * Live_Form_Share)\nCompute_Match_Probs(Strength_A, Strength_B)", language="python")
+    # -------------------------------------------------------------------
+
         
     # סגירת ה-Card הראשון
     st.markdown('</div>', unsafe_allow_html=True)
