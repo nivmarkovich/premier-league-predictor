@@ -536,23 +536,20 @@ if st.button("חשב הסתברות לכל קבוצה"):
         home_form_share = power_a / (power_a + power_b)
         away_form_share = power_b / (power_a + power_b)
         
-    # חישוב הסתברויות היסטוריות גולמיות למשחק (Home / Draw / Away)
-    hw_prob_hist, d_prob_hist, aw_prob_hist = compute_match_outcome_probs(
-        proba_home_strong=proba_a,
-        proba_away_strong=proba_b,
+    # Blending Strengths (30% Historical / 70% Live Form) BEFORE computing outcome breakdown
+    strength_a = (0.30 * proba_a) + (0.70 * home_form_share)
+    strength_b = (0.30 * proba_b) + (0.70 * away_form_share)
+        
+    # חישוב הסתברויות לתוצאת משחק (Home / Draw / Away) על בסיס הכוח המשוקלל
+    home_win_prob, draw_prob, away_win_prob = compute_match_outcome_probs(
+        proba_home_strong=strength_a,
+        proba_away_strong=strength_b,
         home_advantage=0.05,
     )
     
-    # Blending: 30% Historical / 70% Live Form
-    final_home_prob = (0.30 * hw_prob_hist) + (0.70 * home_form_share)
-    final_away_prob = (0.30 * aw_prob_hist) + (0.70 * away_form_share)
-    final_draw_prob = d_prob_hist * 0.85 # Reduce draw probability slightly due to strong live weighting
-    
-    # Normalize probabilities to sum to 1.0
-    total_prob = final_home_prob + final_draw_prob + final_away_prob
-    home_win_prob = final_home_prob / total_prob
-    draw_prob = final_draw_prob / total_prob
-    away_win_prob = final_away_prob / total_prob
+    # Text values for the debug expander
+    hw_prob_hist = proba_a # keeping variable name to pass correctly to markdown
+    aw_prob_hist = proba_b
 
     st.markdown('<div class="st-card">', unsafe_allow_html=True)
     rtl("<h3 class='text-center'>תוצאות התחזית (Scoreboard)</h3>")
@@ -618,6 +615,28 @@ if st.button("חשב הסתברות לכל קבוצה"):
         "</p>"
     )
     
+    with st.expander("דוח דיבוג אלגוריתם - מאחורי הקלעים"):
+        st.markdown(f"**{team_a} (Home)**")
+        st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_a:.3f}")
+        st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {home_form_share:.1%}")
+        st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_a:.1%} (אחרי פנלטי אם הופעל)")
+        st.markdown(f"- **כוח משוקלל סופי (Strength A):** {strength_a:.1%}")
+        st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_a}")
+        
+        st.markdown("---")
+        
+        st.markdown(f"**{team_b} (Away)**")
+        st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_b:.3f}")
+        st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {away_form_share:.1%}")
+        st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_b:.1%} (אחרי פנלטי אם הופעל)")
+        st.markdown(f"- **כוח משוקלל סופי (Strength B):** {strength_b:.1%}")
+        st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_b}")
+        
+        st.markdown("---")
+        
+        st.markdown("**נוסחת השילוב (Blend Strength):**")
+        st.code("Strength = (0.30 * Historical) + (0.70 * Live_Form_Share)\nCompute_Match_Probs(Strength_A, Strength_B)", language="python")
+        
     # סגירת ה-Card הראשון
     st.markdown('</div>', unsafe_allow_html=True)
 
