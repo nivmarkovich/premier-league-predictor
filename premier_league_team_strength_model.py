@@ -102,6 +102,12 @@ def preprocess_players(df: pd.DataFrame) -> pd.DataFrame:
     # 3. בניית DataFrame "נקי" עם כל העמודות
     features = df.columns
     data_clean = df[features].copy()
+    
+    # 3.1: Sanitization - ניקוי רווחים מיותרים משמות הקבוצות והשחקנים
+    if "Club" in data_clean.columns:
+        data_clean["Club"] = data_clean["Club"].astype(str).str.strip()
+    if "Name" in data_clean.columns:
+        data_clean["Name"] = data_clean["Name"].astype(str).str.strip()
 
     # הסרת שחקנים ללא הופעות (כדי לא לחלק ב-0)
     data_clean_app_non_zero = data_clean[data_clean["Appearances"] > 0]

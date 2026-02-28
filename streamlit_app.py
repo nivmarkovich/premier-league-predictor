@@ -225,9 +225,64 @@ def normalize_team_name(name: str) -> str:
         s = s.replace(ch, " ")
     for ch in ["."]:
         s = s.replace(ch, "")
-    # נורמליזציה של רווחים
     s = " ".join(s.split())
     return s
+
+TEAM_MAPPING_TO_CSV = {
+    "brentford": "Brentford FC",
+    "sunderland": "Sunderland AFC",
+    "nott'm forest": "Nottingham Forest FC",
+    "nottingham forest": "Nottingham Forest FC",
+    "spurs": "Tottenham Hotspur FC",
+    "tottenham": "Tottenham Hotspur FC",
+    "tottenham hotspur": "Tottenham Hotspur FC",
+    "man united": "Manchester United FC",
+    "manchester united": "Manchester United FC",
+    "man utd": "Manchester United FC",
+    "wolves": "Wolverhampton Wanderers FC",
+    "wolverhampton": "Wolverhampton Wanderers FC",
+    "newcastle": "Newcastle United FC",
+    "newcastle utd": "Newcastle United FC",
+    "brighton": "Brighton & Hove Albion FC",
+    "aston villa": "Aston Villa FC",
+    "leicester": "Leicester City FC"
+}
+
+def get_csv_team_name(live_name: str, csv_clubs: list) -> str | None:
+    """
+    מנסה למצוא את השם התואם של הקבוצה מהטבלה החיה במודל ההיסטורי (CSV).
+    """
+    if not live_name:
+        return None
+        
+    live_name_clean = live_name.strip()
+    norm_live = normalize_team_name(live_name_clean)
+    
+    # 1. התאמה מדויקת
+    for c in csv_clubs:
+        if c.strip() == live_name_clean:
+            return c
+            
+    # 2. התאמה לפי מילון ידני
+    if norm_live in TEAM_MAPPING_TO_CSV:
+        mapped = TEAM_MAPPING_TO_CSV[norm_live]
+        if mapped in csv_clubs:
+            return mapped
+            
+    # 3. התאמה מנורמלת
+    for c in csv_clubs:
+        if normalize_team_name(c) == norm_live:
+            return c
+            
+    # 4. התאמה רכה חכמה
+    matches = difflib.get_close_matches(norm_live, [normalize_team_name(c) for c in csv_clubs], n=1, cutoff=0.55)
+    if matches:
+        best_match = matches[0]
+        for c in csv_clubs:
+            if normalize_team_name(c) == best_match:
+                return c
+                
+    return None
 
 
 @st.cache_data
@@ -415,31 +470,40 @@ if len(clubs) < 2:
     rtl("נדרשות לפחות שתי קבוצות בדאטה כדי לבצע השוואה.")
     st.stop()
 
+# 1. סינון ה-Dropdown: נציג רק קבוצות מהטבלה הלייב
+if live_standings_df is not None and not live_standings_df.empty:
+    options_list = sorted(live_standings_df["team_name"].dropna().unique().tolist())
+else:
+    options_list = sorted(clubs)
+
 col1, col2 = st.columns(2)
 
 with col1:
-    team_a = st.selectbox("קבוצה 1", clubs, index=0)
+    team_a = st.selectbox("קבוצה 1", options_list, index=0)
 
 with col2:
-    # בחירת קבוצה 2, ברירת מחדל – הקבוצה השנייה ברשימה אם קיימת
-    default_index = 1 if len(clubs) > 1 else 0
-    team_b = st.selectbox("קבוצה 2", clubs, index=default_index)
+    default_index = 1 if len(options_list) > 1 else 0
+    team_b = st.selectbox("קבוצה 2", options_list, index=default_index)
 
 if team_a == team_b:
     rtl("בחר שתי קבוצות שונות כדי לבצע השוואה.")
     st.stop()
 
 if st.button("חשב הסתברות לכל קבוצה"):
-    # מוציאים את השורות המתאימות לכל קבוצה מ-X_all
-    try:
-        idx_a = clubs.index(team_a)
-        idx_b = clubs.index(team_b)
-    except ValueError:
-        st.error("לא הצלחתי למצוא את אחת הקבוצות ברשימת הפיצ'רים.")
-        st.stop()
+    
+    csv_team_a = get_csv_team_name(team_a, clubs)
+    csv_team_b = get_csv_team_name(team_b, clubs)
+    
+    def get_team_features_with_fallback(csv_name, original_name):
+        if csv_name and csv_name in X_all.index:
+            return X_all.loc[[csv_name]]
+        else:
+            # Missing Data Fallback (League Average)
+            st.warning(f"⚠️ אין מספיק דאטה היסטורי עבור '{original_name}' (ייתכן שעלתה ליגה). משתמש בערכי 'ממוצע ליגה'.")
+            return X_all.mean(axis=0).to_frame().T
 
-    X_team_a = X_all.iloc[[idx_a]]
-    X_team_b = X_all.iloc[[idx_b]]
+    X_team_a = get_team_features_with_fallback(csv_team_a, team_a)
+    X_team_b = get_team_features_with_fallback(csv_team_b, team_b)
 
     # predict_proba מחזיר הסתברות לכל מחלקה; מחלקה 1 היא "חזקה"
     proba_a = float(model.predict_proba(X_team_a)[0][1])
@@ -674,43 +738,23 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         ppg_dict[row['team_name_norm']] = 1.0 # ערך דיפולטיבי לפני תחילת העונה
                 
                 # עזר למציאת קבוצה ב-X_all ובטבלה
-                def get_csv_team(norm):
-                    for c in clubs:
-                        if normalize_team_name(c) == norm:
-                            return c
-                    m = difflib.get_close_matches(norm, [normalize_team_name(c) for c in clubs], n=1, cutoff=0.4)
-                    if m:
-                        best = m[0]
-                        for c in clubs:
-                            if normalize_team_name(c) == best:
-                                return c
-                    print(f"⚠️ אזהרה: הסימולטור לא מצא התאמה לקבוצה מול המודל (CSV): '{norm}'")
-                    return None
-                    
-                MANUAL_MAPPING = {
-                    'Brentford': 'Brentford FC',
-                    'Sunderland': 'Sunderland AFC',
-                    'Nott\'m Forest': 'Nottingham Forest FC',
-                    'Spurs': 'Tottenham Hotspur FC',
-                    'Man United': 'Manchester United FC'
-                }
-                
                 def get_standings_team(raw_name):
                     norm = normalize_team_name(raw_name)
-                    # ניסיון מיפוי ידני תחילה
-                    if raw_name in MANUAL_MAPPING:
-                        norm = MANUAL_MAPPING[raw_name]
-                    elif norm in MANUAL_MAPPING:
-                        norm = MANUAL_MAPPING[norm]
+                    # Use our robust mapping to try and normalize
+                    if norm in TEAM_MAPPING_TO_CSV:
+                        mapped_csv = TEAM_MAPPING_TO_CSV[norm]
+                        # map back to standings if needed? Wait, standings has points_sim.
+                        # It's actually better to just check against points_sim keys
                         
                     keys = list(points_sim.keys())
                     if norm in keys:
                         return norm
+                    
+                    # try difflib
                     m = difflib.get_close_matches(norm, keys, n=1, cutoff=0.4)
                     if m:
                         return m[0]
                     
-                    # התראת שגיאה למשתמש ולא אזהרה שקטה
                     st.error(f"Missing team in standings: {raw_name} -> {norm}")
                     return norm
 
@@ -726,26 +770,26 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     home_form_share = home_power / (home_power + away_power)
                     away_form_share = away_power / (home_power + away_power)
                     
-                    csv_home = get_csv_team(home_norm)
-                    csv_away = get_csv_team(away_norm)
+                    csv_home = get_csv_team_name(home_norm, clubs)
+                    csv_away = get_csv_team_name(away_norm, clubs)
                     
-                    # מנגנון הצלה למודל (Try-Except Fallback)
-                    try:
-                        if not (csv_home and csv_away and csv_home in X_all.index and csv_away in X_all.index):
-                            raise ValueError(f"Team {home_norm} or {away_norm} not in Historical Model (Out of Vocabulary)")
-                            
+                    # מנגנון הצלה למודל (Missing Data Fallback) במקום לזרוק Exception נאפל לערך ממוצע
+                    if csv_home and csv_home in X_all.index:
                         x_h = X_all.loc[[csv_home]]
-                        x_a = X_all.loc[[csv_away]]
-                        p_home = float(model.predict_proba(x_h)[0][1])
-                        p_away = float(model.predict_proba(x_a)[0][1])
+                    else:
+                        x_h = X_all.mean(axis=0).to_frame().T
                         
-                        # חישוב הסתברויות גולמיות (מודל היסטורי)
-                        hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
-                    except Exception as e:
-                        # Fallback מלא לכושר נוכחי בלבד ללא הפרעה למשוואה
-                        hw_prob_raw = home_form_share
-                        aw_prob_raw = away_form_share
-                        d_prob_raw = 0.24 / 0.85 # מתקזז ככה ל-0.24 אחרי ההכפלה מטה
+                    if csv_away and csv_away in X_all.index:
+                        x_a = X_all.loc[[csv_away]]
+                    else:
+                        x_a = X_all.mean(axis=0).to_frame().T
+                    
+                    p_home = float(model.predict_proba(x_h)[0][1])
+                    p_away = float(model.predict_proba(x_a)[0][1])
+                    
+                    # חישוב הסתברויות גולמיות (מודל היסטורי)
+                    hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_home, p_away, home_advantage=0.0)
+
                     
                     # שקלול מתוקן (35% מודל, 65% כושר נוכחי)
                     final_home_prob = (0.35 * hw_prob_raw) + (0.65 * home_form_share)
@@ -778,7 +822,7 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                     
                     if total_games < 38:
                         missing = 38 - total_games
-                        csv_team = get_csv_team(norm)
+                        csv_team = get_csv_team_name(norm, clubs)
                         
                         # כוח כושר באקספוננציאל (Power Law) לווירטואלית
                         ppg_team = max(ppg_dict.get(norm, 1.0), 0.1)
@@ -788,18 +832,13 @@ if st.button("חשב טבלה סופית 🏆", use_container_width=True):
                         team_form_share = team_power / (team_power + virtual_power)
                         virtual_form_share = virtual_power / (team_power + virtual_power)
                         
-                        try:
-                            if not (csv_team and csv_team in X_all.index):
-                                raise ValueError("Out of vocabulary team for missing fixtures loop")
-                                
+                        if csv_team and csv_team in X_all.index:
                             x_team = X_all.loc[[csv_team]]
-                            p_team = float(model.predict_proba(x_team)[0][1])
-                            hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
-                        except Exception:
-                            # מנגנון הצלה לווירטואלית מבוסס פורמה נוכחית עקב Out of Vocabulary
-                            hw_prob_raw = team_form_share
-                            aw_prob_raw = virtual_form_share
-                            d_prob_raw = 0.24 / 0.85
+                        else:
+                            x_team = average_team_features
+                            
+                        p_team = float(model.predict_proba(x_team)[0][1])
+                        hw_prob_raw, d_prob_raw, aw_prob_raw = compute_match_outcome_probs(p_team, avg_p, home_advantage=0.0)
                         
                         for _ in range(missing):
                             # שקלול מתוקן (35% מודל, 65% כושר נוכחי)

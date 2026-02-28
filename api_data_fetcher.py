@@ -193,7 +193,7 @@ def _extract_standings_to_df(api_response: Dict[str, Any]) -> pd.DataFrame:
                 # required by the rest of the project
                 "rank": team_entry.get("position"),
                 "team_id": team_info.get("id"),
-                "team_name": team_info.get("name"),
+                "team_name": str(team_info.get("name", "")).strip() if team_info.get("name") else None,
                 "team_logo": None,  # football-data.org free tier does not expose logos here
                 "played": team_entry.get("playedGames"),
                 "wins": team_entry.get("won"),
@@ -237,7 +237,7 @@ def normalize_team_name(name: str) -> str:
     if not isinstance(name, str):
         return ""
 
-    s = name.lower()
+    s = name.strip().lower()
     
     # תרגום חריגים ידועים מה-API לקבוצות שלנו
     aliases = {
