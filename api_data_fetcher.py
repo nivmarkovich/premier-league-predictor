@@ -270,12 +270,11 @@ def normalize_team_name(name: str) -> str:
             s = v
             break # No need to continue if exact match alias found
             
-    for ch in ["-", "–", "_", "&"]:
+    for ch in ["-", "–", "_", "&", "."]:
         s = s.replace(ch, " ")
-    for ch in ["."]:
-        s = s.replace(ch, "")
         
-    s = s.replace(" fc", "").replace(" afc", "").replace(" utd", " united")
+    s = re.sub(r'\butd\b', 'united', s)
+    s = re.sub(r'\b(?:fc|afc)\b', '', s)
     
     s = " ".join(s.split())
     return s

@@ -207,45 +207,40 @@ def compute_match_outcome_probs(
 # ==========================
 
 
+import re
+
 def normalize_team_name(name: str) -> str:
     """
     מנרמל שם קבוצה כדי לצמצם בעיות התאמה בין שמות מה-CSV לשמות מה-API.
 
     פעולות:
     - המרה לאותיות קטנות.
-    - החלפת מקפים/קו מפריד ברווח.
-    - הסרת נקודות ורווחים כפולים.
+    - החלפת מקפים ונקודות ברווחים.
+    - הסרת 'fc' / 'afc'.
+    - המרת 'utd' ל-'united'.
     """
 
     if not isinstance(name, str):
         return ""
 
     s = name.lower()
-    for ch in ["-", "–", "_"]:
+    for ch in ["-", "–", "_", ".", "&"]:
         s = s.replace(ch, " ")
-    for ch in ["."]:
-        s = s.replace(ch, "")
+        
+    s = re.sub(r'\butd\b', 'united', s)
+    s = re.sub(r'\b(?:fc|afc)\b', '', s)
+    
     s = " ".join(s.split())
     return s
 
 TEAM_MAPPING_TO_CSV = {
-    "brentford": "Brentford FC",
-    "sunderland": "Sunderland AFC",
-    "nott'm forest": "Nottingham Forest FC",
-    "nottingham forest": "Nottingham Forest FC",
-    "spurs": "Tottenham Hotspur FC",
-    "tottenham": "Tottenham Hotspur FC",
-    "tottenham hotspur": "Tottenham Hotspur FC",
-    "man united": "Manchester United FC",
-    "manchester united": "Manchester United FC",
-    "man utd": "Manchester United FC",
-    "wolves": "Wolverhampton Wanderers FC",
-    "wolverhampton": "Wolverhampton Wanderers FC",
-    "newcastle": "Newcastle United FC",
-    "newcastle utd": "Newcastle United FC",
-    "brighton": "Brighton & Hove Albion FC",
-    "aston villa": "Aston Villa FC",
-    "leicester": "Leicester City FC"
+    "nott'm forest": "nottingham forest",
+    "spurs": "tottenham hotspur",
+    "tottenham": "tottenham hotspur",
+    "man united": "manchester united",
+    "wolves": "wolverhampton wanderers",
+    "wolverhampton": "wolverhampton wanderers",
+    "brighton": "brighton and hove albion",
 }
 
 def get_csv_team_name(live_name: str, csv_clubs: list) -> str | None:
@@ -263,16 +258,17 @@ def get_csv_team_name(live_name: str, csv_clubs: list) -> str | None:
         if c.strip() == live_name_clean:
             return c
             
-    # 2. התאמה לפי מילון ידני
-    if norm_live in TEAM_MAPPING_TO_CSV:
-        mapped = TEAM_MAPPING_TO_CSV[norm_live]
-        if mapped in csv_clubs:
-            return mapped
-            
-    # 3. התאמה מנורמלת
+    # 2. התאמה מנורמלת
     for c in csv_clubs:
         if normalize_team_name(c) == norm_live:
             return c
+            
+    # 3. התאמה לפי מילון ידני
+    if norm_live in TEAM_MAPPING_TO_CSV:
+        mapped_norm = TEAM_MAPPING_TO_CSV[norm_live]
+        for c in csv_clubs:
+            if normalize_team_name(c) == mapped_norm:
+                return c
             
     # 4. התאמה רכה חכמה
     matches = difflib.get_close_matches(norm_live, [normalize_team_name(c) for c in csv_clubs], n=1, cutoff=0.55)
