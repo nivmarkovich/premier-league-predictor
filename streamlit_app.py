@@ -531,7 +531,7 @@ if st.button("חשב הסתברות לכל קבוצה"):
     ppg_a_final = 1.0
     ppg_b_final = 1.0
     
-    home_bonus_applied_to_a = 1.25 # 25% boost to home PPG to strongly separate teams
+    home_bonus_applied_to_a = 1.10 # 10% boost to home PPG to give a minor advantage
     
     if live_standings_df is not None and not live_standings_df.empty:
         row_a = find_team_in_standings(live_standings_df, team_a)
@@ -547,20 +547,20 @@ if st.button("חשב הסתברות לכל קבוצה"):
         if row_a is not None and row_a.get("played", 0) > 0:
             ppg_a_raw = float(row_a["points"]) / float(row_a["played"])
             streak_mult_a = calc_streak_ppg(row_a.get("form"))
-            ppg_a_adj = (ppg_a_raw * 0.6) + (streak_mult_a * 0.4)
+            ppg_a_adj = (ppg_a_raw * 0.8) + (streak_mult_a * 0.2)
             
         if row_b is not None and row_b.get("played", 0) > 0:
             ppg_b_raw = float(row_b["points"]) / float(row_b["played"])
             streak_mult_b = calc_streak_ppg(row_b.get("form"))
-            ppg_b_adj = (ppg_b_raw * 0.6) + (streak_mult_b * 0.4)
+            ppg_b_adj = (ppg_b_raw * 0.8) + (streak_mult_b * 0.2)
             
         # Apply Home Advantage Bonus to Adjusted PPG directly
         ppg_a_final = ppg_a_adj * home_bonus_applied_to_a
         ppg_b_final = ppg_b_adj
             
-        # Power Law for current form (aggresively increased to 3.5 to create gaps for momentum)
-        power_a = max(ppg_a_final, 0.1) ** 3.5
-        power_b = max(ppg_b_final, 0.1) ** 3.5
+        # Power Law for current form (reduced to 2.0 to soften extreme momentum gaps)
+        power_a = max(ppg_a_final, 0.1) ** 2.0
+        power_b = max(ppg_b_final, 0.1) ** 2.0
         home_form_share = power_a / (power_a + power_b)
         away_form_share = power_b / (power_a + power_b)
         
@@ -651,8 +651,8 @@ if st.button("חשב הסתברות לכל קבוצה"):
         with st.expander("דוח דיבוג אלגוריתם - מאחורי הקלעים", expanded=True):
             st.markdown(f"**{team_a} (Home)**")
             st.markdown(f"- **PPG מקורי מהטבלה:** {ppg_a_raw:.3f} | **Streak PPG (5 אחרונים):** {streak_mult_a:.3f}")
-            st.markdown(f"- **PPG משוקלל (60% מקורי + 40% מומנטום):** {ppg_a_adj:.3f}")
-            st.markdown(f"- **PPG סופי (אחרי בונוס ביתיות +25%):** {ppg_a_final:.3f}")
+            st.markdown(f"- **PPG משוקלל (80% מקורי + 20% מומנטום):** {ppg_a_adj:.3f}")
+            st.markdown(f"- **PPG סופי (אחרי בונוס ביתיות +10%):** {ppg_a_final:.3f}")
             st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {home_form_share:.1%}")
             st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_a:.1%} (אחרי פנלטי אם הופעל)")
             st.markdown(f"- **כוח משוקלל סופי (Strength A):** {strength_a:.1%}")
@@ -662,7 +662,7 @@ if st.button("חשב הסתברות לכל קבוצה"):
             
             st.markdown(f"**{team_b} (Away)**")
             st.markdown(f"- **PPG מקורי מהטבלה:** {ppg_b_raw:.3f} | **Streak PPG (5 אחרונים):** {streak_mult_b:.3f}")
-            st.markdown(f"- **PPG משוקלל (60% מקורי + 40% מומנטום):** {ppg_b_adj:.3f}")
+            st.markdown(f"- **PPG משוקלל (80% מקורי + 20% מומנטום):** {ppg_b_adj:.3f}")
             st.markdown(f"- **PPG סופי (ללא בונוס ביתיות):** {ppg_b_final:.3f}")
             st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {away_form_share:.1%}")
             st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_b:.1%} (אחרי פנלטי אם הופעל)")
