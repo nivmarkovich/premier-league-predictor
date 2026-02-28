@@ -460,6 +460,10 @@ except Exception as e:
         f"לא הצלחתי לטעון את טבלת הליגה החיה מה-API.<br>"
         f"פרטים טכניים: {e}"
     )
+
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+admin_debug_mode = st.sidebar.checkbox("Admin Debug Mode", value=False)
+
 rtl("<h3>בחר שתי קבוצות להשוואה</h3>")
 
 if len(clubs) < 2:
@@ -518,21 +522,45 @@ if st.button("חשב הסתברות לכל קבוצה"):
     home_form_share = 0.5
     away_form_share = 0.5
     
+    ppg_a_raw = 1.0
+    ppg_b_raw = 1.0
+    streak_mult_a = 1.0
+    streak_mult_b = 1.0
+    ppg_a_adj = 1.0
+    ppg_b_adj = 1.0
+    ppg_a_final = 1.0
+    ppg_b_final = 1.0
+    
+    home_bonus_applied_to_a = 1.25 # 25% boost to home PPG to strongly separate teams
+    
     if live_standings_df is not None and not live_standings_df.empty:
         row_a = find_team_in_standings(live_standings_df, team_a)
         row_b = find_team_in_standings(live_standings_df, team_b)
         
-        ppg_a = 1.0
-        ppg_b = 1.0
+        def calc_streak_ppg(form_str):
+            if not form_str or pd.isna(form_str): return 1.0
+            clean_form = "".join([char for char in str(form_str).upper() if char in ['W', 'D', 'L']])[-5:]
+            if not clean_form: return 1.0
+            pts = sum({'W': 3, 'D': 1, 'L': 0}.get(c, 0) for c in clean_form)
+            return pts / len(clean_form)
         
         if row_a is not None and row_a.get("played", 0) > 0:
-            ppg_a = float(row_a["points"]) / float(row_a["played"])
-        if row_b is not None and row_b.get("played", 0) > 0:
-            ppg_b = float(row_b["points"]) / float(row_b["played"])
+            ppg_a_raw = float(row_a["points"]) / float(row_a["played"])
+            streak_mult_a = calc_streak_ppg(row_a.get("form"))
+            ppg_a_adj = (ppg_a_raw * 0.6) + (streak_mult_a * 0.4)
             
-        # Power Law for current form
-        power_a = max(ppg_a, 0.1) ** 2.5
-        power_b = max(ppg_b, 0.1) ** 2.5
+        if row_b is not None and row_b.get("played", 0) > 0:
+            ppg_b_raw = float(row_b["points"]) / float(row_b["played"])
+            streak_mult_b = calc_streak_ppg(row_b.get("form"))
+            ppg_b_adj = (ppg_b_raw * 0.6) + (streak_mult_b * 0.4)
+            
+        # Apply Home Advantage Bonus to Adjusted PPG directly
+        ppg_a_final = ppg_a_adj * home_bonus_applied_to_a
+        ppg_b_final = ppg_b_adj
+            
+        # Power Law for current form (aggresively increased to 3.5 to create gaps for momentum)
+        power_a = max(ppg_a_final, 0.1) ** 3.5
+        power_b = max(ppg_b_final, 0.1) ** 3.5
         home_form_share = power_a / (power_a + power_b)
         away_form_share = power_b / (power_a + power_b)
         
@@ -595,7 +623,11 @@ if st.button("חשב הסתברות לכל קבוצה"):
 
     # קביעה מי "פייבוריט" לפי הסתברות גבוהה יותר
     eps = 0.02  # טולרנס קטן בשביל הבדלים זניחים בסיכויי ניצחון
-    if abs(home_win_prob - away_win_prob) < eps:
+    max_prob = max(home_win_prob, draw_prob, away_win_prob)
+    
+    if max_prob == draw_prob:
+        rtl("<p class='text-center'>לפי המודל, התוצאה הסבירה ביותר במשחק זה היא <b>תיקו</b>.</p>")
+    elif abs(home_win_prob - away_win_prob) < eps:
         rtl(
             "<p class='text-center'>לפי המודל, שתי הקבוצות כמעט שוות בחוזק שלהן – "
             "קשה להגיד מי פייבוריט מובהק.</p>"
@@ -615,29 +647,32 @@ if st.button("חשב הסתברות לכל קבוצה"):
         "</p>"
     )
     
-    # --- DEBUG EXPANDER (Commented out per user request for privacy) ---
-    # with st.expander("דוח דיבוג אלגוריתם - מאחורי הקלעים"):
-    #     st.markdown(f"**{team_a} (Home)**")
-    #     st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_a:.3f}")
-    #     st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {home_form_share:.1%}")
-    #     st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_a:.1%} (אחרי פנלטי אם הופעל)")
-    #     st.markdown(f"- **כוח משוקלל סופי (Strength A):** {strength_a:.1%}")
-    #     st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_a}")
-    #     
-    #     st.markdown("---")
-    #     
-    #     st.markdown(f"**{team_b} (Away)**")
-    #     st.markdown(f"- **PPG (נקודות למשחק) מקורי מהטבלה:** {ppg_b:.3f}")
-    #     st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {away_form_share:.1%}")
-    #     st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_b:.1%} (אחרי פנלטי אם הופעל)")
-    #     st.markdown(f"- **כוח משוקלל סופי (Strength B):** {strength_b:.1%}")
-    #     st.markdown(f"- **פנלטי (Fallback Applied):** {fallback_b}")
-    #     
-    #     st.markdown("---")
-    #     
-    #     st.markdown("**נוסחת השילוב (Blend Strength):**")
-    #     st.code("Strength = (0.10 * Historical) + (0.90 * Live_Form_Share)\nCompute_Match_Probs(Strength_A, Strength_B)", language="python")
-    # -------------------------------------------------------------------
+    if admin_debug_mode:
+        with st.expander("דוח דיבוג אלגוריתם - מאחורי הקלעים", expanded=True):
+            st.markdown(f"**{team_a} (Home)**")
+            st.markdown(f"- **PPG מקורי מהטבלה:** {ppg_a_raw:.3f} | **Streak PPG (5 אחרונים):** {streak_mult_a:.3f}")
+            st.markdown(f"- **PPG משוקלל (60% מקורי + 40% מומנטום):** {ppg_a_adj:.3f}")
+            st.markdown(f"- **PPG סופי (אחרי בונוס ביתיות +25%):** {ppg_a_final:.3f}")
+            st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {home_form_share:.1%}")
+            st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_a:.1%} (אחרי פנלטי אם הופעל)")
+            st.markdown(f"- **כוח משוקלל סופי (Strength A):** {strength_a:.1%}")
+            st.markdown(f"- **פנלטי הופעל:** {fallback_a}")
+            
+            st.markdown("---")
+            
+            st.markdown(f"**{team_b} (Away)**")
+            st.markdown(f"- **PPG מקורי מהטבלה:** {ppg_b_raw:.3f} | **Streak PPG (5 אחרונים):** {streak_mult_b:.3f}")
+            st.markdown(f"- **PPG משוקלל (60% מקורי + 40% מומנטום):** {ppg_b_adj:.3f}")
+            st.markdown(f"- **PPG סופי (ללא בונוס ביתיות):** {ppg_b_final:.3f}")
+            st.markdown(f"- **הסתברות וירטואלית (Live Form Share):** {away_form_share:.1%}")
+            st.markdown(f"- **הסתברות גולמית מהמודל ההיסטורי:** {proba_b:.1%} (אחרי פנלטי אם הופעל)")
+            st.markdown(f"- **כוח משוקלל סופי (Strength B):** {strength_b:.1%}")
+            st.markdown(f"- **פנלטי הופעל:** {fallback_b}")
+            
+            st.markdown("---")
+            
+            st.markdown("**נוסחת השילוב (Blend Strength):**")
+            st.code("Strength = (0.10 * Historical) + (0.90 * Live_Form_Share)\nCompute_Match_Probs(Strength_A, Strength_B)", language="python")
 
         
     # סגירת ה-Card הראשון
