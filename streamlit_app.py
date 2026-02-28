@@ -558,9 +558,9 @@ if st.button("חשב הסתברות לכל קבוצה"):
         ppg_a_final = ppg_a_adj * home_bonus_applied_to_a
         ppg_b_final = ppg_b_adj
             
-        # Power Law for current form (reduced to 2.0 to soften extreme momentum gaps)
-        power_a = max(ppg_a_final, 0.1) ** 2.0
-        power_b = max(ppg_b_final, 0.1) ** 2.0
+        # Power Law for current form (adjusted to 2.6 to properly reflect top-tier team gaps)
+        power_a = max(ppg_a_final, 0.1) ** 2.6
+        power_b = max(ppg_b_final, 0.1) ** 2.6
         home_form_share = power_a / (power_a + power_b)
         away_form_share = power_b / (power_a + power_b)
         
