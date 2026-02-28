@@ -491,19 +491,68 @@ if st.button("חשב הסתברות לכל קבוצה"):
     csv_team_b = get_csv_team_name(team_b, clubs)
     
     def get_team_features_with_fallback(csv_name, original_name):
+        used_fallback = False
         if csv_name and csv_name in X_all.index:
-            return X_all.loc[[csv_name]]
+            features = X_all.loc[[csv_name]]
         else:
             # Missing Data Fallback (League Average)
             st.warning(f"⚠️ אין מספיק דאטה היסטורי עבור '{original_name}' (ייתכן שעלתה ליגה). משתמש בערכי 'ממוצע ליגה'.")
-            return X_all.mean(axis=0).to_frame().T
+            features = X_all.mean(axis=0).to_frame().T
+            used_fallback = True
+        return features, used_fallback
 
-    X_team_a = get_team_features_with_fallback(csv_team_a, team_a)
-    X_team_b = get_team_features_with_fallback(csv_team_b, team_b)
+    X_team_a, fallback_a = get_team_features_with_fallback(csv_team_a, team_a)
+    X_team_b, fallback_b = get_team_features_with_fallback(csv_team_b, team_b)
 
     # predict_proba מחזיר הסתברות לכל מחלקה; מחלקה 1 היא "חזקה"
-    proba_a = float(model.predict_proba(X_team_a)[0][1])
-    proba_b = float(model.predict_proba(X_team_b)[0][1])
+    proba_a_raw = float(model.predict_proba(X_team_a)[0][1])
+    proba_b_raw = float(model.predict_proba(X_team_b)[0][1])
+    
+    # Apply a 15% penalty to the historical probability if the team relied on fallback
+    proba_a = proba_a_raw * 0.85 if fallback_a else proba_a_raw
+    proba_b = proba_b_raw * 0.85 if fallback_b else proba_b_raw
+    
+    # ------------------
+    # Live Data Weighting
+    # ------------------
+    home_form_share = 0.5
+    away_form_share = 0.5
+    
+    if live_standings_df is not None and not live_standings_df.empty:
+        row_a = find_team_in_standings(live_standings_df, team_a)
+        row_b = find_team_in_standings(live_standings_df, team_b)
+        
+        ppg_a = 1.0
+        ppg_b = 1.0
+        
+        if row_a is not None and row_a.get("played", 0) > 0:
+            ppg_a = float(row_a["points"]) / float(row_a["played"])
+        if row_b is not None and row_b.get("played", 0) > 0:
+            ppg_b = float(row_b["points"]) / float(row_b["played"])
+            
+        # Power Law for current form
+        power_a = max(ppg_a, 0.1) ** 2.5
+        power_b = max(ppg_b, 0.1) ** 2.5
+        home_form_share = power_a / (power_a + power_b)
+        away_form_share = power_b / (power_a + power_b)
+        
+    # חישוב הסתברויות היסטוריות גולמיות למשחק (Home / Draw / Away)
+    hw_prob_hist, d_prob_hist, aw_prob_hist = compute_match_outcome_probs(
+        proba_home_strong=proba_a,
+        proba_away_strong=proba_b,
+        home_advantage=0.05,
+    )
+    
+    # Blending: 30% Historical / 70% Live Form
+    final_home_prob = (0.30 * hw_prob_hist) + (0.70 * home_form_share)
+    final_away_prob = (0.30 * aw_prob_hist) + (0.70 * away_form_share)
+    final_draw_prob = d_prob_hist * 0.85 # Reduce draw probability slightly due to strong live weighting
+    
+    # Normalize probabilities to sum to 1.0
+    total_prob = final_home_prob + final_draw_prob + final_away_prob
+    home_win_prob = final_home_prob / total_prob
+    draw_prob = final_draw_prob / total_prob
+    away_win_prob = final_away_prob / total_prob
 
     st.markdown('<div class="st-card">', unsafe_allow_html=True)
     rtl("<h3 class='text-center'>תוצאות התחזית (Scoreboard)</h3>")
@@ -513,21 +562,14 @@ if st.button("חשב הסתברות לכל קבוצה"):
     
     with score_col1:
         st.markdown(f"<div class='text-center score-board-team'>{team_a}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='text-center score-board-prob' style='color: #1e88e5;'>{proba_a:.1%}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='text-center score-board-prob' style='color: #1e88e5;'>{home_win_prob:.1%}</div>", unsafe_allow_html=True)
         
     with score_col2:
         st.markdown(f"<div class='text-center score-board-team'>{team_b}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='text-center score-board-prob' style='color: #43a047;'>{proba_b:.1%}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='text-center score-board-prob' style='color: #43a047;'>{away_win_prob:.1%}</div>", unsafe_allow_html=True)
 
     # סיכום מילולי לתחזית
     st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-    
-    # חישוב הסתברויות היוריסטיות לתוצאת משחק (Home / Draw / Away)
-    home_win_prob, draw_prob, away_win_prob = compute_match_outcome_probs(
-        proba_home_strong=proba_a,
-        proba_away_strong=proba_b,
-        home_advantage=0.05,
-    )
 
     rtl(
         f"הנחה לחישוב: {team_a} היא הקבוצה הביתית (Home), "
@@ -555,19 +597,19 @@ if st.button("חשב הסתברות לכל קבוצה"):
         )
 
     # קביעה מי "פייבוריט" לפי הסתברות גבוהה יותר
-    eps = 1e-3  # טולרנס קטן בשביל הבדלים זניחים
-    if abs(proba_a - proba_b) < eps:
+    eps = 0.02  # טולרנס קטן בשביל הבדלים זניחים בסיכויי ניצחון
+    if abs(home_win_prob - away_win_prob) < eps:
         rtl(
             "<p class='text-center'>לפי המודל, שתי הקבוצות כמעט שוות בחוזק שלהן – "
             "קשה להגיד מי פייבוריט מובהק.</p>"
         )
-    elif proba_a > proba_b:
+    elif home_win_prob > away_win_prob:
         rtl(
-            f"<p class='text-center'>לפי המודל, <b>{team_a}</b> היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה.</p>"
+            f"<p class='text-center'>לפי המודל, <b>{team_a}</b> היא הפייבוריט התיאורטית לניצחון במשחק הזה.</p>"
         )
     else:
         rtl(
-            f"<p class='text-center'>לפי המודל, <b>{team_b}</b> היא הקבוצה היותר חזקה ולכן הפייבוריט התיאורטי במשחק הזה.</p>"
+            f"<p class='text-center'>לפי המודל, <b>{team_b}</b> היא הפייבוריט התיאורטית לניצחון במשחק הזה.</p>"
         )
 
     rtl(
