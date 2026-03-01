@@ -461,8 +461,9 @@ except Exception as e:
         f"פרטים טכניים: {e}"
     )
 
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
-admin_debug_mode = st.sidebar.checkbox("Admin Debug Mode", value=False)
+# st.sidebar.markdown("<br>", unsafe_allow_html=True)
+# admin_debug_mode = st.sidebar.checkbox("Admin Debug Mode", value=False)
+admin_debug_mode = False  # Hidden for security
 
 rtl("<h3>בחר שתי קבוצות להשוואה</h3>")
 
